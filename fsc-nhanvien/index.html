@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b3a6e">
+<title>FSC Nhân viên</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root {
+    --navy: #0b3a6e; --blue: #1565c0; --blue-soft: #e8f0fb; --ink: #14202e; --muted: #5d6b7a;
+    --line: #dfe5ec; --bg: #f3f6f9; --card: #ffffff; --ok: #1b7f4b; --ok-soft: #e5f5ec;
+    --warn: #a35a00; --warn-soft: #fff3e0; --err: #b3261e; --err-soft: #fdecea;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding-bottom: env(safe-area-inset-bottom); }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 0 16px 32px; }
+  header.top { background: var(--navy); color: #fff; padding: calc(14px + env(safe-area-inset-top)) 16px 14px; }
+  header.top .wrap { padding-bottom: 0; display: flex; align-items: center; gap: 12px; }
+  .logo { width: 38px; height: 38px; border-radius: 10px; background: #fff; color: var(--navy); display: grid; place-items: center; font-weight: 800; font-size: 13px; letter-spacing: .5px; flex: none; }
+  .who { min-width: 0; flex: 1; }
+  .who b { display: block; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .who span { font-size: 13px; opacity: .8; }
+  .link-btn { background: none; border: 1px solid rgba(255,255,255,.4); color: #fff; border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-top: 14px; }
+  h1 { font-size: 22px; margin: 28px 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  p.sub { color: var(--muted); margin: 0 0 8px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 6px; }
+  input, select { width: 100%; font-size: 17px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); }
+  input:focus, select:focus { outline: 2px solid var(--blue); outline-offset: 0; border-color: var(--blue); }
+  button.primary { width: 100%; margin-top: 16px; padding: 14px; border: 0; border-radius: 12px; background: var(--blue); color: #fff; font-size: 17px; font-weight: 600; }
+  button.primary:disabled { opacity: .55; }
+  button.ghost { width: 100%; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); font-size: 15px; }
+  .msg { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
+  .msg.err { background: var(--err-soft); color: var(--err); }
+  .msg.ok { background: var(--ok-soft); color: var(--ok); }
+  .msg.warn { background: var(--warn-soft); color: var(--warn); }
+  .hidden { display: none !important; }
+  nav.tabs { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 0 4px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  nav.tabs button { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 9px 2px; font-size: 13px; color: var(--muted); }
+  nav.tabs button.on { background: var(--navy); border-color: var(--navy); color: #fff; font-weight: 600; }
+  .scanbtn { width: 100%; margin-top: 4px; padding: 22px 16px; border: 0; border-radius: 16px; background: var(--blue); color: #fff; font-size: 19px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .scanbtn svg { width: 28px; height: 28px; }
+  #reader { margin-top: 12px; border-radius: 12px; overflow: hidden; background: #000; }
+  #reader video { border-radius: 12px; }
+  .result { text-align: center; padding: 20px 12px; border-radius: 14px; margin-top: 12px; }
+  .result.in { background: var(--ok-soft); color: var(--ok); }
+  .result.out { background: var(--blue-soft); color: var(--navy); }
+  .result .big { font-size: 26px; font-weight: 800; }
+  .result .time { font-size: 40px; font-weight: 800; letter-spacing: 1px; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row .l { color: var(--muted); }
+  .row .r { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .row.total .l, .row.total .r { color: var(--ink); font-size: 17px; font-weight: 800; }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stat { background: var(--blue-soft); border-radius: 12px; padding: 12px; }
+  .stat .v { font-size: 22px; font-weight: 800; color: var(--navy); font-variant-numeric: tabular-nums; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .day { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .day:last-child { border-bottom: 0; }
+  .day .d { display: flex; justify-content: space-between; font-weight: 600; }
+  .day .s { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .pill { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--blue-soft); color: var(--navy); font-weight: 600; }
+  .pill.cpg { background: var(--warn-soft); color: var(--warn); }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); }
+  .pill.bad { background: var(--err-soft); color: var(--err); }
+  .kyrow { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+  .kyrow select { padding: 9px 12px; font-size: 15px; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .empty { color: var(--muted); text-align: center; padding: 18px 0; }
+  .lookup { min-height: 20px; font-size: 14px; margin-top: 6px; color: var(--muted); }
+  .lookup.ok { color: var(--ok); font-weight: 600; }
+  .lookup.err { color: var(--err); }
+  .types { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .types button { padding: 11px 6px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 14px; color: var(--ink); }
+  .types button.on { border-color: var(--blue); background: var(--blue-soft); color: var(--navy); font-weight: 700; }
+  textarea { width: 100%; font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; resize: vertical; min-height: 44px; }
+  .leave { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .leave:last-child { border-bottom: 0; }
+  .leave .s { font-size: 13px; color: var(--muted); }
+  .mini { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 10px; font-size: 13px; color: var(--err); }
+  .spin { display: inline-block; width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: sp .8s linear infinite; vertical-align: -3px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ĐĂNG NHẬP -->
+<section id="vLogin" class="hidden">
+  <div class="wrap">
+    <h1>FSC · Nhân viên</h1>
+    <p class="sub">Chấm công và xem ngày công, sản lượng, bảng lương của bạn.</p>
+    <form class="card" id="fLogin" autocomplete="on">
+      <label for="iCode">Mã nhân viên</label>
+      <input id="iCode" name="username" autocapitalize="characters" autocomplete="username" placeholder="Ví dụ: F016" required>
+      <div id="codeName" class="lookup" aria-live="polite"></div>
+      <label for="iPin">Mật khẩu</label>
+      <input id="iPin" name="password" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Mật khẩu" required>
+      <button class="primary" id="bLogin" type="submit">Đăng nhập</button>
+      <div id="mLogin" class="msg hidden"></div>
+    </form>
+    <p class="note">Lần đầu đăng nhập: dùng mật khẩu do quản lý cung cấp, sau đó tự đặt mật khẩu riêng. Tài khoản chỉ dùng được trên một điện thoại.</p>
+  </div>
+</section>
+
+<!-- ĐẶT MẬT KHẨU -->
+<section id="vPin" class="hidden">
+  <div class="wrap">
+    <h1>Đặt mật khẩu riêng</h1>
+    <p class="sub" id="pinWho"></p>
+    <form class="card" id="fPin">
+      <label for="iNew">Mật khẩu mới (4 đến 8 chữ số)</label>
+      <input id="iNew" type="password" inputmode="numeric" autocomplete="new-password" pattern="\d{4,8}" required>
+      <label for="iNew2">Nhập lại mật khẩu mới</label>
+      <input id="iNew2" type="password" inputmode="numeric" autocomplete="new-password" pattern="\d{4,8}" required>
+      <button class="primary" id="bPin" type="submit">Lưu mật khẩu</button>
+      <div id="mPin" class="msg hidden"></div>
+    </form>
+  </div>
+</section>
+
+<!-- MÀN CHÍNH -->
+<section id="vMain" class="hidden">
+  <header class="top">
+    <div class="wrap">
+      <div class="logo">FSC</div>
+      <div class="who"><b id="hName"></b><span id="hCode"></span></div>
+      <button class="link-btn" id="bLogout" type="button">Thoát</button>
+    </div>
+  </header>
+  <div class="wrap">
+    <nav class="tabs">
+      <button type="button" data-tab="scan" class="on">Chấm công</button>
+      <button type="button" data-tab="cong">Ngày công</button>
+      <button type="button" data-tab="sl">Sản lượng</button>
+      <button type="button" data-tab="luong">Lương</button>
+    </nav>
+    <div id="mMain" class="msg hidden"></div>
+
+    <!-- Chấm công -->
+    <div id="tScan">
+      <div class="card">
+        <button class="scanbtn" id="bScan" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>
+          Quét mã chấm công
+        </button>
+        <div id="reader" class="hidden"></div>
+        <button class="ghost hidden" id="bStop" type="button">Hủy quét</button>
+        <div id="scanResult"></div>
+        <p class="note">Quét mã dán tại kho khi bắt đầu ca (giờ vào) và khi kết thúc ca (giờ ra). Lần quét đầu tiên trong ngày là giờ vào, lần sau là giờ ra.</p>
+      </div>
+      <div class="card">
+        <h2>Hôm nay</h2>
+        <div id="today"></div>
+      </div>
+      <div class="card">
+        <h2>Xin nghỉ</h2>
+        <div class="types" id="leaveTypes">
+          <button type="button" data-type="PHEP">Nghỉ phép</button>
+          <button type="button" data-type="NUA_NGAY">Nghỉ nửa ngày</button>
+          <button type="button" data-type="OM">Nghỉ ốm</button>
+          <button type="button" data-type="KHONG_LUONG">Nghỉ không lương</button>
+        </div>
+        <label for="iLeaveDate">Ngày nghỉ</label>
+        <input id="iLeaveDate" type="date">
+        <label for="iLeaveNote">Lý do (không bắt buộc)</label>
+        <textarea id="iLeaveNote" maxlength="200" rows="2"></textarea>
+        <button class="primary" id="bLeave" type="button">Gửi</button>
+        <div id="mLeave" class="msg hidden"></div>
+        <div id="leaveList" style="margin-top:8px"></div>
+        <p class="note">Gửi đơn từ 7 ngày trước đến 60 ngày tới. Đơn tự cập nhật vào bảng chấm công. Gửi lại cùng ngày sẽ thay đơn cũ. Hủy được khi ngày nghỉ chưa qua.</p>
+      </div>
+    </div>
+
+    <!-- Ngày công / Sản lượng / Lương dùng chung chọn kỳ -->
+    <div id="kyBox" class="kyrow hidden">
+      <select id="sKy" aria-label="Kỳ lương"></select>
+    </div>
+    <div id="tCong" class="hidden"></div>
+    <div id="tSl" class="hidden"></div>
+    <div id="tLuong" class="hidden"></div>
+  </div>
+</section>
+
+<script>
+/* ===== CẤU HÌNH: dán URL Ứng dụng web Apps Script (kết thúc bằng /exec) vào đây ===== */
+const API_URL = 'https://script.google.com/macros/s/AKfycbwPZitbwnMuiqy4u0_2gQQJR57l03DPp50CYgab-d_RjQYavIznZyz_8P25tC86cGd-/exec';
+/* ================================================================================== */
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const money = (n) => Math.round(Number(n) || 0).toLocaleString('vi-VN') + ' đ';
+const num = (n, d = 2) => (Number(n) || 0).toLocaleString('vi-VN', { maximumFractionDigits: d });
+const DOW = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+const dmy = (iso) => { const [y, m, d] = String(iso || '').split('-'); return d ? `${d}/${m}` : ''; };
+const dow = (iso) => { const [y, m, d] = String(iso || '').split('-').map(Number); return d ? DOW[new Date(y, m - 1, d).getDay()] : ''; };
+const kyLabel = (k) => { const [y, m] = k.split('-').map(Number); const pm = m === 1 ? 12 : m - 1; return `Tháng ${String(m).padStart(2, '0')}/${y} (26/${String(pm).padStart(2, '0')} – 25/${String(m).padStart(2, '0')})`; };
+const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
+};
+function deviceId() {
+  let id = store.get('fsc_device');
+  if (!id) {
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12));
+    store.set('fsc_device', id);
+  }
+  return id;
+}
+
+let token = store.get('fsc_token');
+let setupToken = null;
+let data = null;
+let tab = 'scan';
+
+async function api(action, body) {
+  if (!/^https:\/\/script\.google\.com\//.test(API_URL)) throw new Error('Trang chưa được cấu hình địa chỉ máy chủ. Báo quản lý.');
+  let res;
+  try {
+    res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ action, deviceId: deviceId() }, body || {})) });
+  } catch (e) { throw new Error('Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.'); }
+  let j;
+  try { j = await res.json(); } catch (e) { throw new Error('Máy chủ trả về dữ liệu lỗi. Thử lại sau.'); }
+  if (!j.ok) { const err = new Error(j.error || 'Có lỗi xảy ra.'); err.code = j.code; throw err; }
+  return j;
+}
+
+function show(view) {
+  ['vLogin', 'vPin', 'vMain'].forEach(v => $(v).classList.toggle('hidden', v !== view));
+}
+function msg(el, text, kind) {
+  el.textContent = text || '';
+  el.className = 'msg ' + (kind || 'err') + (text ? '' : ' hidden');
+}
+
+/* ----- Tra tên khi gõ mã NV ----- */
+let lookupTimer = null, lookupSeq = 0;
+$('iCode').addEventListener('input', () => {
+  clearTimeout(lookupTimer);
+  const code = $('iCode').value.trim();
+  const out = $('codeName');
+  if (code.length < 2) { out.textContent = ''; out.className = 'lookup'; return; }
+  out.textContent = 'Đang tìm…'; out.className = 'lookup';
+  lookupTimer = setTimeout(async () => {
+    const my = ++lookupSeq;
+    try {
+      const r = await api('lookup', { code });
+      if (my !== lookupSeq) return;
+      out.textContent = '✓ ' + r.name + (r.team ? ' · ' + r.team : '');
+      out.className = 'lookup ok';
+    } catch (err) {
+      if (my !== lookupSeq) return;
+      out.textContent = err.message; out.className = 'lookup err';
+    }
+  }, 450);
+});
+
+/* ----- Đăng nhập ----- */
+$('fLogin').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const b = $('bLogin');
+  b.disabled = true; b.innerHTML = '<span class="spin"></span> Đang đăng nhập…';
+  msg($('mLogin'), '');
+  try {
+    const r = await api('login', { code: $('iCode').value.trim(), pin: $('iPin').value });
+    $('iPin').value = '';
+    if (r.mustSetPin) {
+      setupToken = r.setupToken;
+      $('pinWho').textContent = `${r.profile.name} (${r.profile.code}) – lần đầu đăng nhập, hãy đặt mật khẩu riêng.`;
+      show('vPin');
+      return;
+    }
+    token = r.token; store.set('fsc_token', token);
+    await openMain();
+  } catch (err) {
+    msg($('mLogin'), err.message);
+  } finally {
+    b.disabled = false; b.textContent = 'Đăng nhập';
+  }
+});
+
+$('fPin').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const a = $('iNew').value, c = $('iNew2').value;
+  if (a !== c) { msg($('mPin'), 'Hai lần nhập mật khẩu không giống nhau.'); return; }
+  const b = $('bPin');
+  b.disabled = true; b.innerHTML = '<span class="spin"></span> Đang lưu…';
+  try {
+    const r = await api('setPin', { setupToken, newPin: a });
+    token = r.token; store.set('fsc_token', token); setupToken = null;
+    $('iNew').value = ''; $('iNew2').value = '';
+    await openMain();
+  } catch (err) {
+    msg($('mPin'), err.message);
+    if (err.code === 'auth') setTimeout(() => show('vLogin'), 1500);
+  } finally {
+    b.disabled = false; b.textContent = 'Lưu mật khẩu';
+  }
+});
+
+$('bLogout').addEventListener('click', () => {
+  stopScan();
+  token = null; data = null; store.set('fsc_token', null);
+  show('vLogin');
+});
+
+/* ----- Màn chính ----- */
+async function openMain(ky) {
+  show('vMain');
+  msg($('mMain'), data ? '' : 'Đang tải dữ liệu…', 'warn');
+  try {
+    data = await api('me', { token, ky: ky || (data && data.ky) || '' });
+    msg($('mMain'), '');
+    render();
+  } catch (err) {
+    if (err.code === 'auth' || err.code === 'device') { logoutWith(err.message); return; }
+    msg($('mMain'), err.message);
+  }
+}
+function logoutWith(text) {
+  token = null; data = null; store.set('fsc_token', null);
+  show('vLogin'); msg($('mLogin'), text);
+}
+
+document.querySelectorAll('nav.tabs button').forEach(b => b.addEventListener('click', () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll('nav.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  if (tab !== 'scan') stopScan();
+  render();
+}));
+$('sKy').addEventListener('change', () => openMain($('sKy').value));
+
+function render() {
+  if (!data) return;
+  $('hName').textContent = data.profile.name;
+  $('hCode').textContent = `${data.profile.code}${data.profile.team ? ' · ' + data.profile.team : ''}`;
+  $('tScan').classList.toggle('hidden', tab !== 'scan');
+  $('kyBox').classList.toggle('hidden', tab === 'scan');
+  $('tCong').classList.toggle('hidden', tab !== 'cong');
+  $('tSl').classList.toggle('hidden', tab !== 'sl');
+  $('tLuong').classList.toggle('hidden', tab !== 'luong');
+  $('sKy').innerHTML = data.dsKy.map(k => `<option value="${k}"${k === data.ky ? ' selected' : ''}>${esc(kyLabel(k))}</option>`).join('');
+  renderToday(); renderCong(); renderSl(); renderLuong(); renderLeaves();
+}
+
+function renderToday() {
+  const t = todayIso();
+  const list = (data.quet || []).filter(q => q.ngay === t);
+  if (!list.length) { $('today').innerHTML = '<div class="empty">Chưa chấm công hôm nay.</div>'; return; }
+  $('today').innerHTML = list.map(q => `
+    <div class="row"><span class="l">${q.hopLe ? (q.loai === 'IN' ? 'Giờ vào' : 'Giờ ra') : 'Không hợp lệ'}</span>
+    <span class="r">${esc(q.gio)} ${q.hopLe ? '' : `<span class="pill bad">${esc(q.lyDo || 'Lỗi')}</span>`}</span></div>`).join('');
+}
+
+function renderCong() {
+  const rows = data.ngayCong || [];
+  const tong = rows.reduce((s, r) => s + (Number(r.cong) || 0), 0);
+  const tc = rows.reduce((s, r) => s + (Number(r.tangCa) || 0), 0);
+  $('tCong').innerHTML = `
+    <div class="card">
+      <div class="stats">
+        <div class="stat"><div class="v">${num(tong, 1)}</div><div class="k">Ngày công</div></div>
+        <div class="stat"><div class="v">${num(tc, 1)}</div><div class="k">Giờ tăng ca</div></div>
+      </div>
+      <p class="note">Ngày công theo bảng chấm công đã duyệt trên Dashboard${data.capNhatLuc ? ', cập nhật lúc ' + esc(data.capNhatLuc) : ''}.</p>
+    </div>
+    <div class="card">
+      ${rows.length ? rows.map(r => `
+        <div class="day"><div class="d"><span>${dow(r.ngay)} ${dmy(r.ngay)}</span><span>${num(r.cong, 1)} công</span></div>
+        <div class="s">${esc(r.trangThai)}${r.vao ? ' · vào ' + esc(r.vao) : ''}${r.ra ? ' · ra ' + esc(r.ra) : ''}${r.tangCa ? ' · tăng ca ' + num(r.tangCa, 1) + ' giờ' : ''}</div></div>`).join('')
+        : '<div class="empty">Chưa có ngày công trong kỳ này.</div>'}
+    </div>`;
+}
+
+function renderSl() {
+  const rows = data.sanLuong || [];
+  const byDay = {};
+  rows.forEach(r => { (byDay[r.ngay] = byDay[r.ngay] || []).push(r); });
+  const days = Object.keys(byDay).sort().reverse();
+  const tongKfm = rows.filter(r => r.nguon === 'KFM').reduce((s, r) => s + r.soLuong, 0);
+  const tienKfm = rows.filter(r => r.nguon === 'KFM').reduce((s, r) => s + r.thanhTien, 0);
+  const tienCpg = rows.filter(r => r.nguon === 'CPG').reduce((s, r) => s + r.thanhTien, 0);
+  $('tSl').innerHTML = `
+    <div class="card">
+      <div class="stats">
+        <div class="stat"><div class="v">${num(tongKfm, 0)}</div><div class="k">Sản lượng KFM</div></div>
+        <div class="stat"><div class="v">${money(tienKfm + tienCpg)}</div><div class="k">Tiền sản lượng (KFM + CPG)</div></div>
+      </div>
+    </div>
+    <div class="card">
+      ${days.length ? days.map(d => {
+        const it = byDay[d];
+        const tien = it.reduce((s, r) => s + r.thanhTien, 0);
+        return `<div class="day"><div class="d"><span>${dow(d)} ${dmy(d)}</span><span>${money(tien)}</span></div>
+          ${it.map(r => `<div class="s"><span class="pill ${r.nguon === 'CPG' ? 'cpg' : ''}">${esc(r.nguon)}</span> ${esc(r.congViec)} · ${num(r.soLuong)} ${esc(r.dvt)} × ${num(r.donGia)} đ</div>`).join('')}
+        </div>`;
+      }).join('') : '<div class="empty">Chưa có sản lượng trong kỳ này.</div>'}
+    </div>`;
+}
+
+function renderLuong() {
+  const ls = data.luong || [];
+  if (!ls.length) { $('tLuong').innerHTML = '<div class="card"><div class="empty">Chưa có bảng lương kỳ này.</div></div>'; return; }
+  const dangChay = data.ky === data.kyHienTai;
+  $('tLuong').innerHTML = ls.map(l => {
+    const dong = (k, v, show) => show === false ? '' : `<div class="row"><span class="l">${k}</span><span class="r">${v}</span></div>`;
+    return `<div class="card">
+      <h2>Phiếu lương ${esc(kyLabel(data.ky))}</h2>
+      ${dangChay ? '<div class="msg warn">Kỳ đang chạy: số tạm tính, sẽ thay đổi đến cuối kỳ.</div>' : ''}
+      ${dong('Hình thức lương', esc(l.hinhThuc))}
+      ${dong('Ngày công', num(l.ngayCong, 1))}
+      ${dong('Giờ tăng ca', num(l.gioTangCa, 1), l.gioTangCa > 0)}
+      ${dong('Sản lượng KFM', num(l.slKfm), l.slKfm > 0)}
+      ${dong('Tiền sản lượng KFM', money(l.tienKfm), l.tienKfm > 0)}
+      ${dong('Tiền CPG', money(l.tienCpg), l.tienCpg > 0)}
+      ${dong('Lương ngày', money(l.luongNgay), l.luongNgay > 0)}
+      ${dong('Tiền tăng ca', money(l.tienTangCa), l.tienTangCa > 0)}
+      ${dong('Phụ cấp', money(l.phuCap), l.phuCap > 0)}
+      ${dong('Tổng thu nhập', money(l.tongThuNhap))}
+      ${dong('Thuế TNCN (10%)', '− ' + money(l.thue))}
+      ${dong('Tạm ứng', '− ' + money(l.tamUng), l.tamUng > 0)}
+      <div class="row total"><span class="l">Thực nhận</span><span class="r">${money(l.thucNhan)}</span></div>
+      <p class="note">Chốt lúc ${esc(l.chotLuc)}. Thắc mắc về lương, liên hệ quản lý.</p>
+    </div>`;
+  }).join('');
+}
+
+/* ----- Quét mã ----- */
+let scanner = null, scanning = false, gpsPromise = null;
+
+function getGps() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
+    );
+  });
+}
+
+async function stopScan() {
+  if (scanner && scanning) { try { await scanner.stop(); } catch (e) {} }
+  scanning = false;
+  $('reader').classList.add('hidden');
+  $('bStop').classList.add('hidden');
+  $('bScan').classList.remove('hidden');
+}
+
+$('bStop').addEventListener('click', stopScan);
+$('bScan').addEventListener('click', async () => {
+  $('scanResult').innerHTML = '';
+  msg($('mMain'), '');
+  if (typeof Html5Qrcode === 'undefined') { msg($('mMain'), 'Không tải được bộ quét mã. Kiểm tra mạng rồi tải lại trang.'); return; }
+  gpsPromise = getGps();
+  $('bScan').classList.add('hidden');
+  $('reader').classList.remove('hidden');
+  $('bStop').classList.remove('hidden');
+  try {
+    if (!scanner) {
+      const F = Html5QrcodeSupportedFormats;
+      scanner = new Html5Qrcode('reader', { formatsToSupport: [F.QR_CODE, F.CODE_128, F.CODE_39], verbose: false });
+    }
+    scanning = true;
+    await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: (w, h) => { const s = Math.floor(Math.min(w, h) * 0.75); return { width: s, height: s }; } }, onDecoded, () => {});
+  } catch (err) {
+    await stopScan();
+    msg($('mMain'), 'Không mở được camera. Cho phép trang dùng camera (biểu tượng ổ khóa cạnh địa chỉ trang) rồi thử lại.');
+  }
+});
+
+let busy = false;
+async function onDecoded(text) {
+  if (busy) return;
+  busy = true;
+  await stopScan();
+  $('scanResult').innerHTML = '<div class="msg warn"><span class="spin"></span> Đang ghi nhận…</div>';
+  try {
+    const gps = await gpsPromise;
+    const r = await api('scan', { token, barcode: text, lat: gps ? gps.lat : '', lng: gps ? gps.lng : '' });
+    const vao = r.loai === 'IN';
+    $('scanResult').innerHTML = `<div class="result ${vao ? 'in' : 'out'}">
+      <div class="big">${vao ? 'ĐÃ CHẤM GIỜ VÀO' : 'ĐÃ CHẤM GIỜ RA'}</div>
+      <div class="time">${esc(r.gio)}</div>
+      <div>${esc(r.kho || '')}${r.trungLap ? ' · đã ghi nhận trước đó' : ''}</div></div>`;
+    if (navigator.vibrate) navigator.vibrate(120);
+    openMain();
+  } catch (err) {
+    if (err.code === 'auth' || err.code === 'device') { logoutWith(err.message); }
+    else $('scanResult').innerHTML = `<div class="msg err">${esc(err.message)}</div>`;
+  } finally {
+    busy = false;
+  }
+}
+
+/* ----- Xin nghỉ ----- */
+const LEAVE_NAME = { PHEP: 'Nghỉ phép', NUA_NGAY: 'Nghỉ nửa ngày', OM: 'Nghỉ ốm', KHONG_LUONG: 'Nghỉ không lương' };
+let leaveType = '';
+document.querySelectorAll('#leaveTypes button').forEach(b => b.addEventListener('click', () => {
+  leaveType = b.dataset.type;
+  document.querySelectorAll('#leaveTypes button').forEach(x => x.classList.toggle('on', x === b));
+}));
+function setLeaveDateBounds() {
+  const d = new Date(), f = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const min = new Date(d); min.setDate(d.getDate() - 7);
+  const max = new Date(d); max.setDate(d.getDate() + 60);
+  $('iLeaveDate').min = f(min); $('iLeaveDate').max = f(max);
+  if (!$('iLeaveDate').value) $('iLeaveDate').value = f(d);
+}
+setLeaveDateBounds();
+function renderLeaves() {
+  const list = (data && data.nghi) || [];
+  const t = todayIso();
+  if (!list.length) { $('leaveList').innerHTML = ''; return; }
+  $('leaveList').innerHTML = '<h2 style="margin-top:14px">Đơn nghỉ của bạn</h2>' + list.map(n => {
+    const huy = n.trangThai === 'Đã hủy';
+    return `<div class="leave"><div><b>${dow(n.ngay)} ${dmy(n.ngay)}</b> · ${esc(n.loaiTen)}
+      <div class="s">${huy ? '<span class="pill bad">Đã hủy</span>' : '<span class="pill ok">Đã gửi</span>'}${n.lyDo ? ' · ' + esc(n.lyDo) : ''}</div></div>
+      ${!huy && n.ngay >= t ? `<button class="mini" type="button" data-cancel="${esc(n.id)}">Hủy</button>` : ''}</div>`;
+  }).join('');
+  $('leaveList').querySelectorAll('[data-cancel]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      const r = await api('cancelLeave', { token, id: b.dataset.cancel });
+      data.nghi = r.nghi; renderLeaves();
+      msg($('mLeave'), 'Đã hủy đơn nghỉ.', 'ok');
+    } catch (err) {
+      if (err.code === 'auth' || err.code === 'device') return logoutWith(err.message);
+      msg($('mLeave'), err.message); b.disabled = false;
+    }
+  }));
+}
+$('bLeave').addEventListener('click', async () => {
+  if (!leaveType) { msg($('mLeave'), 'Chọn loại nghỉ.'); return; }
+  const date = $('iLeaveDate').value;
+  if (!date) { msg($('mLeave'), 'Chọn ngày nghỉ.'); return; }
+  const b = $('bLeave');
+  b.disabled = true; b.innerHTML = '<span class="spin"></span> Đang gửi…';
+  try {
+    const r = await api('leave', { token, type: leaveType, date, note: $('iLeaveNote').value });
+    data.nghi = r.nghi; renderLeaves();
+    $('iLeaveNote').value = '';
+    msg($('mLeave'), `Đã gửi ${LEAVE_NAME[leaveType]} ngày ${dmy(date)}.`, 'ok');
+  } catch (err) {
+    if (err.code === 'auth' || err.code === 'device') return logoutWith(err.message);
+    msg($('mLeave'), err.message);
+  } finally {
+    b.disabled = false; b.textContent = 'Gửi';
+  }
+});
+
+/* ----- Khởi động ----- */
+if (token) openMain(); else show('vLogin');
+</script>
+</body>
+</html>
