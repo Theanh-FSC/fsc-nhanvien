@@ -46,6 +46,15 @@
   nav.tabs button.on { background: var(--navy); border-color: var(--navy); color: #fff; font-weight: 600; }
   .scanbtn { width: 100%; margin-top: 4px; padding: 22px 16px; border: 0; border-radius: 16px; background: var(--blue); color: #fff; font-size: 19px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 10px; }
   .scanbtn svg { width: 28px; height: 28px; }
+  .scanpair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .scanpair .scanbtn { flex-direction: column; gap: 6px; padding: 18px 8px; font-size: 17px; margin-top: 0; }
+  .scanbtn.in { background: var(--ok); }
+  .scanbtn.out { background: var(--navy); }
+  .scanbtn.dim { opacity: .55; }
+  .scanbtn .hint { font-size: 12px; font-weight: 600; opacity: .9; }
+  .shift { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--blue-soft); color: var(--navy); font-size: 14px; }
+  .shift.open { background: var(--warn-soft); color: var(--warn); }
+  .mode-tag { display: inline-block; margin-bottom: 8px; font-weight: 700; }
   #reader { margin-top: 12px; border-radius: 12px; overflow: hidden; background: #000; }
   #reader video { border-radius: 12px; }
   .result { text-align: center; padding: 20px 12px; border-radius: 14px; margin-top: 12px; }
@@ -146,17 +155,27 @@
     <!-- Chấm công -->
     <div id="tScan">
       <div class="card">
-        <button class="scanbtn" id="bScan" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>
-          Quét mã chấm công
-        </button>
+        <div class="scanpair" id="scanPair">
+          <button class="scanbtn in" id="bScanIn" type="button" data-mode="IN">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+            Quét giờ vào
+            <span class="hint">Bắt đầu ca</span>
+          </button>
+          <button class="scanbtn out" id="bScanOut" type="button" data-mode="OUT">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+            Quét giờ ra
+            <span class="hint">Kết thúc ca</span>
+          </button>
+        </div>
+        <div id="shiftNow" class="shift hidden" aria-live="polite"></div>
+        <div id="scanMode" class="mode-tag hidden"></div>
         <div id="reader" class="hidden"></div>
         <button class="ghost hidden" id="bStop" type="button">Hủy quét</button>
         <div id="scanResult"></div>
-        <p class="note">Quét mã dán tại kho khi bắt đầu ca (giờ vào) và khi kết thúc ca (giờ ra). Lần quét đầu tiên trong ngày là giờ vào, lần sau là giờ ra.</p>
+        <p class="note">Bắt đầu ca: bấm <b>Quét giờ vào</b>. Kết thúc ca: bấm <b>Quét giờ ra</b>, rồi quét mã dán tại kho. Ca đêm qua ngày (ví dụ vào 22:00, ra 06:00 sáng hôm sau) vẫn tính công cho ngày vào ca.</p>
       </div>
       <div class="card">
-        <h2>Hôm nay</h2>
+        <h2>Ca gần nhất</h2>
         <div id="today"></div>
       </div>
       <div class="card">
@@ -351,13 +370,43 @@ function render() {
   renderToday(); renderCong(); renderSl(); renderLuong(); renderLeaves();
 }
 
+const CA_TOI_DA_MS = 16 * 3600000; // giờ ra gắn vào giờ vào gần nhất trong 16 giờ
+
+// Ca gần nhất: lần quét vào hợp lệ cuối cùng trong 16 giờ qua và lần quét ra sau nó.
+function currentShift() {
+  const ds = (data && data.quet || []).filter(q => q.hopLe && (q.loai === 'IN' || q.loai === 'OUT'));
+  let vao = null;
+  for (let i = ds.length - 1; i >= 0; i--) if (ds[i].loai === 'IN') { vao = ds[i]; break; }
+  if (!vao || Date.now() - vao.ms > CA_TOI_DA_MS) return { vao: null, ra: null };
+  let ra = null;
+  ds.forEach(q => { if (q.loai === 'OUT' && q.ms > vao.ms) ra = q; });
+  return { vao, ra };
+}
+
+function renderShiftHint() {
+  const c = currentShift(), box = $('shiftNow');
+  const open = c.vao && !c.ra;
+  $('bScanIn').classList.toggle('dim', !!open);
+  $('bScanOut').classList.toggle('dim', !open);
+  if (open) {
+    box.className = 'shift open';
+    box.innerHTML = `Đang trong ca: vào <b>${esc(c.vao.gio)}</b> ngày ${dmy(c.vao.ngay)}, chưa chấm giờ ra. Kết thúc ca hãy bấm <b>Quét giờ ra</b>.`;
+  } else if (c.vao && c.ra) {
+    box.className = 'shift';
+    box.innerHTML = `Ca ngày ${dmy(c.vao.ngay)}: vào <b>${esc(c.vao.gio)}</b>, ra <b>${esc(c.ra.gio)}</b>${c.ra.ngay !== c.vao.ngay ? ' (' + dmy(c.ra.ngay) + ')' : ''}.`;
+  } else {
+    box.className = 'shift hidden';
+  }
+}
+
 function renderToday() {
-  const t = todayIso();
-  const list = (data.quet || []).filter(q => q.ngay === t);
-  if (!list.length) { $('today').innerHTML = '<div class="empty">Chưa chấm công hôm nay.</div>'; return; }
+  renderShiftHint();
+  const since = Date.now() - 24 * 3600000;
+  const list = (data.quet || []).filter(q => q.ms >= since);
+  if (!list.length) { $('today').innerHTML = '<div class="empty">Chưa chấm công trong 24 giờ qua.</div>'; return; }
   $('today').innerHTML = list.map(q => `
     <div class="row"><span class="l">${q.hopLe ? (q.loai === 'IN' ? 'Giờ vào' : 'Giờ ra') : 'Không hợp lệ'}</span>
-    <span class="r">${esc(q.gio)} ${q.hopLe ? '' : `<span class="pill bad">${esc(q.lyDo || 'Lỗi')}</span>`}</span></div>`).join('');
+    <span class="r">${esc(q.gio)} <span style="color:var(--muted);font-weight:400">${dmy(q.ngay)}</span> ${q.hopLe ? '' : `<span class="pill bad">${esc(q.lyDo || 'Lỗi')}</span>`}</span></div>`).join('');
 }
 
 function renderCong() {
@@ -447,21 +496,32 @@ function getGps() {
   });
 }
 
+let scanMode = 'IN';
+
 async function stopScan() {
   if (scanner && scanning) { try { await scanner.stop(); } catch (e) {} }
   scanning = false;
   $('reader').classList.add('hidden');
   $('bStop').classList.add('hidden');
-  $('bScan').classList.remove('hidden');
+  $('scanMode').classList.add('hidden');
+  $('scanPair').classList.remove('hidden');
+  if (data) renderShiftHint();
 }
 
 $('bStop').addEventListener('click', stopScan);
-$('bScan').addEventListener('click', async () => {
+['bScanIn', 'bScanOut'].forEach(id => $(id).addEventListener('click', () => startScan($(id).dataset.mode)));
+async function startScan(mode) {
+  scanMode = mode === 'OUT' ? 'OUT' : 'IN';
   $('scanResult').innerHTML = '';
   msg($('mMain'), '');
   if (typeof Html5Qrcode === 'undefined') { msg($('mMain'), 'Không tải được bộ quét mã. Kiểm tra mạng rồi tải lại trang.'); return; }
   gpsPromise = getGps();
-  $('bScan').classList.add('hidden');
+  $('scanPair').classList.add('hidden');
+  $('shiftNow').classList.add('hidden');
+  const tag = $('scanMode');
+  tag.textContent = scanMode === 'IN' ? 'Đang quét GIỜ VÀO' : 'Đang quét GIỜ RA';
+  tag.style.color = scanMode === 'IN' ? 'var(--ok)' : 'var(--navy)';
+  tag.classList.remove('hidden');
   $('reader').classList.remove('hidden');
   $('bStop').classList.remove('hidden');
   try {
@@ -475,7 +535,7 @@ $('bScan').addEventListener('click', async () => {
     await stopScan();
     msg($('mMain'), 'Không mở được camera. Cho phép trang dùng camera (biểu tượng ổ khóa cạnh địa chỉ trang) rồi thử lại.');
   }
-});
+}
 
 let busy = false;
 async function onDecoded(text) {
@@ -485,12 +545,13 @@ async function onDecoded(text) {
   $('scanResult').innerHTML = '<div class="msg warn"><span class="spin"></span> Đang ghi nhận…</div>';
   try {
     const gps = await gpsPromise;
-    const r = await api('scan', { token, barcode: text, lat: gps ? gps.lat : '', lng: gps ? gps.lng : '' });
+    const r = await api('scan', { token, mode: scanMode, barcode: text, lat: gps ? gps.lat : '', lng: gps ? gps.lng : '' });
     const vao = r.loai === 'IN';
+    const caInfo = !vao && r.ngayCa ? `Ca ngày ${dmy(r.ngayCa)}${r.gioVao ? ' (vào ' + esc(r.gioVao) + ')' : ''}` : '';
     $('scanResult').innerHTML = `<div class="result ${vao ? 'in' : 'out'}">
       <div class="big">${vao ? 'ĐÃ CHẤM GIỜ VÀO' : 'ĐÃ CHẤM GIỜ RA'}</div>
       <div class="time">${esc(r.gio)}</div>
-      <div>${esc(r.kho || '')}${r.trungLap ? ' · đã ghi nhận trước đó' : ''}</div></div>`;
+      <div>${esc(r.kho || '')}${caInfo ? ' · ' + caInfo : ''}${r.trungLap ? ' · đã ghi nhận trước đó' : ''}</div></div>`;
     if (navigator.vibrate) navigator.vibrate(120);
     openMain();
   } catch (err) {
