@@ -172,7 +172,7 @@
         <div id="reader" class="hidden"></div>
         <button class="ghost hidden" id="bStop" type="button">Hủy quét</button>
         <div id="scanResult"></div>
-        <p class="note">Bắt đầu ca: bấm <b>Quét giờ vào</b>. Kết thúc ca: bấm <b>Quét giờ ra</b>, rồi quét mã dán tại kho. Ca đêm qua ngày (ví dụ vào 22:00, ra 06:00 sáng hôm sau) vẫn tính công cho ngày vào ca.</p>
+        <p class="note">Bắt đầu ca: bấm <b>Quét giờ vào</b>. Kết thúc ca: bấm <b>Quét giờ ra</b>, rồi quét mã dán tại kho. Ca đêm qua ngày (ví dụ vào 22:00, ra 06:00 sáng hôm sau) vẫn tính công cho ngày vào ca. Quên quét ra ca trước thì vẫn bấm <b>Quét giờ vào</b> cho ca mới và báo quản lý bổ sung giờ ra.</p>
       </div>
       <div class="card">
         <h2>Ca gần nhất</h2>
@@ -386,11 +386,11 @@ function currentShift() {
 function renderShiftHint() {
   const c = currentShift(), box = $('shiftNow');
   const open = c.vao && !c.ra;
-  $('bScanIn').classList.toggle('dim', !!open);
-  $('bScanOut').classList.toggle('dim', !open);
+  $('bScanIn').classList.remove('dim');
+  $('bScanOut').classList.remove('dim');
   if (open) {
     box.className = 'shift open';
-    box.innerHTML = `Đang trong ca: vào <b>${esc(c.vao.gio)}</b> ngày ${dmy(c.vao.ngay)}, chưa chấm giờ ra. Kết thúc ca hãy bấm <b>Quét giờ ra</b>.`;
+    box.innerHTML = `Đang trong ca: vào <b>${esc(c.vao.gio)}</b> ngày ${dmy(c.vao.ngay)}, chưa chấm giờ ra. Kết thúc ca hãy bấm <b>Quét giờ ra</b>. Nếu đã quên quét ra ca đó và nay bắt đầu ca mới, bấm <b>Quét giờ vào</b> bình thường, quản lý sẽ bổ sung giờ ra.`;
   } else if (c.vao && c.ra) {
     box.className = 'shift';
     box.innerHTML = `Ca ngày ${dmy(c.vao.ngay)}: vào <b>${esc(c.vao.gio)}</b>, ra <b>${esc(c.ra.gio)}</b>${c.ra.ngay !== c.vao.ngay ? ' (' + dmy(c.ra.ngay) + ')' : ''}.`;
@@ -547,11 +547,11 @@ async function onDecoded(text) {
     const gps = await gpsPromise;
     const r = await api('scan', { token, mode: scanMode, barcode: text, lat: gps ? gps.lat : '', lng: gps ? gps.lng : '' });
     const vao = r.loai === 'IN';
-    const caInfo = !vao && r.ngayCa ? `Ca ngày ${dmy(r.ngayCa)}${r.gioVao ? ' (vào ' + esc(r.gioVao) + ')' : ''}` : '';
+    const caInfo = !vao && r.ngayCa && r.gioVao ? `Ca ngày ${dmy(r.ngayCa)} (vào ${esc(r.gioVao)})` : '';
     $('scanResult').innerHTML = `<div class="result ${vao ? 'in' : 'out'}">
       <div class="big">${vao ? 'ĐÃ CHẤM GIỜ VÀO' : 'ĐÃ CHẤM GIỜ RA'}</div>
       <div class="time">${esc(r.gio)}</div>
-      <div>${esc(r.kho || '')}${caInfo ? ' · ' + caInfo : ''}${r.trungLap ? ' · đã ghi nhận trước đó' : ''}</div></div>`;
+      <div>${esc(r.kho || '')}${caInfo ? ' · ' + caInfo : ''}${r.trungLap ? ' · đã ghi nhận trước đó' : ''}</div></div>${r.canhBao ? `<div class="msg warn">${esc(r.canhBao)}</div>` : ''}`;
     if (navigator.vibrate) navigator.vibrate(120);
     openMain();
   } catch (err) {
