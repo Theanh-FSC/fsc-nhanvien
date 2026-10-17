@@ -240,7 +240,18 @@ let setupToken = null;
 let data = null;
 let tab = 'scan';
 
+// Máy chủ bận (nhiều người quét cùng lúc): tự thử lại 3 lần, cách 2 / 4 / 6 giây. Lượt bị "bận" chưa ghi gì nên thử lại an toàn.
 async function api(action, body) {
+  for (let lan = 0; ; lan++) {
+    try { return await api1(action, body); }
+    catch (e) {
+      const ban = e.code === 'busy' || /đang bận/i.test(e.message || '');
+      if (!ban || lan >= 3) throw e;
+      await new Promise(r => setTimeout(r, 2000 * (lan + 1)));
+    }
+  }
+}
+async function api1(action, body) {
   if (!/^https:\/\/script\.google\.com\//.test(API_URL)) throw new Error('Trang chưa được cấu hình địa chỉ máy chủ. Báo quản lý.');
   let res;
   try {
