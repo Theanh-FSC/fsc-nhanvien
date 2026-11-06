@@ -147,8 +147,40 @@ public class MainActivity extends Activity implements LocationListener {
         edPin.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
         final TextView err = text(msg == null ? "" : msg, 14, C_BAD);
         final Button btn = bigButton("ĐĂNG NHẬP", C_PRIMARY);
+        final TextView tvTen = text("", 14, C_OK);
+        tvTen.setPadding(dp(4), dp(4), 0, 0);
         card.addView(label("Mã nhân viên"));
         card.addView(edCode);
+        card.addView(tvTen);
+        final Runnable traTen = () -> {
+            final String ma = edCode.getText().toString().trim().toUpperCase(Locale.ROOT);
+            if (ma.length() < 2) { tvTen.setText(""); return; }
+            tvTen.setTextColor(C_MUTED);
+            tvTen.setText("Đang tìm…");
+            chay(() -> {
+                JSONObject req = base("lookup");
+                req.put("code", ma);
+                return Api.call(req);
+            }, res -> {
+                if (!ma.equals(edCode.getText().toString().trim().toUpperCase(Locale.ROOT))) return;
+                String to = res.optString("team");
+                tvTen.setTextColor(C_OK);
+                tvTen.setText("✓ " + res.optString("name") + (to.isEmpty() ? "" : " · " + to));
+            }, e -> {
+                if (!ma.equals(edCode.getText().toString().trim().toUpperCase(Locale.ROOT))) return;
+                tvTen.setTextColor(C_BAD);
+                tvTen.setText(e.getMessage());
+            });
+        };
+        edCode.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence c, int a, int b, int d) { }
+            @Override public void onTextChanged(CharSequence c, int a, int b, int d) { }
+            @Override public void afterTextChanged(android.text.Editable e) {
+                ui.removeCallbacks(traTen);
+                ui.postDelayed(traTen, 600);
+            }
+        });
+        if (edCode.getText().length() >= 2) ui.post(traTen);
         card.addView(space(12));
         card.addView(label("Mật khẩu"));
         card.addView(edPin);
@@ -508,30 +540,93 @@ public class MainActivity extends Activity implements LocationListener {
     private void renderCong() {
         JSONArray rows = me.optJSONArray("ngayCong");
         if (rows == null) rows = new JSONArray();
+        String ky = me.optString("ky");
         double tong = 0, tc = 0;
+        java.util.TreeMap<String, String[]> ds = new java.util.TreeMap<>(java.util.Collections.reverseOrder());
         for (int i = 0; i < rows.length(); i++) {
             JSONObject r = rows.optJSONObject(i);
+            if (r == null) continue;
             tong += r.optDouble("cong", 0);
             tc += r.optDouble("tangCa", 0);
-        }
-        LinearLayout s = card();
-        s.addView(stats(num(tong, 1), "Ngày công", num(tc, 1), "Giờ tăng ca"));
-        String cn = me.optString("capNhatLuc");
-        s.addView(space(6));
-        s.addView(text("Ngày công theo bảng chấm công đã duyệt trên Dashboard" + (cn.isEmpty() ? "" : ", cập nhật lúc " + cn) + ".", 12, C_MUTED));
-        content.addView(s);
-        content.addView(space(12));
-        LinearLayout c = card();
-        if (rows.length() == 0) c.addView(text("Chưa có ngày công trong kỳ này.", 14, C_MUTED));
-        for (int i = rows.length() - 1; i >= 0; i--) {
-            JSONObject r = rows.optJSONObject(i);
             StringBuilder sub = new StringBuilder(r.optString("trangThai"));
             if (!r.optString("vao").isEmpty()) sub.append(" · vào ").append(r.optString("vao"));
             if (!r.optString("ra").isEmpty()) sub.append(" · ra ").append(r.optString("ra"));
             if (r.optDouble("tangCa", 0) > 0) sub.append(" · tăng ca ").append(num(r.optDouble("tangCa"), 1)).append(" giờ");
-            c.addView(dongNgay(thuNgan(r.optString("ngay")) + " " + dm(r.optString("ngay")), num(r.optDouble("cong", 0), 1) + " công", sub.toString(), i > 0));
+            ds.put(r.optString("ngay"), new String[]{num(r.optDouble("cong", 0), 1) + " công", sub.toString(), "1"});
+        }
+        // Ngày đã chấm công trên app/web nhưng Dashboard chưa duyệt (chưa có trong NgayCong)
+        int choDuyet = 0;
+        java.util.Map<String, String[]> ca = caTuQuet(me.optJSONArray("quet"));
+        String[] khoang = kyTuDen(ky);
+        for (java.util.Map.Entry<String, String[]> e : ca.entrySet()) {
+            String ngay = e.getKey();
+            if (ds.containsKey(ngay) || khoang == null || ngay.compareTo(khoang[0]) < 0 || ngay.compareTo(khoang[1]) > 0) continue;
+            String[] g = e.getValue();
+            String sub = "Đã chấm công · chờ Dashboard duyệt"
+                    + (g[0].isEmpty() ? " · chưa có giờ vào" : " · vào " + g[0])
+                    + (g[1].isEmpty() ? " · chưa có giờ ra" : " · ra " + g[1]);
+            ds.put(ngay, new String[]{"chờ duyệt", sub, "0"});
+            choDuyet++;
+        }
+        LinearLayout s = card();
+        s.addView(stats(num(tong, 1), "Ngày công đã duyệt", String.valueOf(choDuyet), "Ngày chờ duyệt"));
+        String cn = me.optString("capNhatLuc");
+        s.addView(space(6));
+        s.addView(text((tc > 0 ? "Giờ tăng ca: " + num(tc, 1) + " giờ. " : "")
+                + "Ngày công theo bảng chấm công đã duyệt trên Dashboard" + (cn.isEmpty() ? "" : ", cập nhật lúc " + cn)
+                + ". Ngày \"chờ duyệt\" là ngày đã chấm công, sẽ tính công sau khi quản lý cập nhật Dashboard.", 12, C_MUTED));
+        content.addView(s);
+        content.addView(space(12));
+        LinearLayout c = card();
+        if (ds.isEmpty()) c.addView(text("Chưa có ngày công trong kỳ này.", 14, C_MUTED));
+        int n = 0;
+        for (java.util.Map.Entry<String, String[]> e : ds.entrySet()) {
+            n++;
+            String[] v = e.getValue();
+            View d = dongNgay(thuNgan(e.getKey()) + " " + dm(e.getKey()), v[0], v[1], n < ds.size());
+            if ("0".equals(v[2])) d.setAlpha(0.75f);
+            c.addView(d);
         }
         content.addView(c);
+    }
+
+    /** Ghép ca từ các lượt chấm công hợp lệ (giống máy chủ): ngày vào ca → {giờ vào, giờ ra}. Ra trong 16 giờ sau vào. */
+    private static java.util.Map<String, String[]> caTuQuet(JSONArray quet) {
+        java.util.Map<String, String[]> out = new java.util.HashMap<>();
+        if (quet == null) return out;
+        long moMs = -1;
+        String moNgay = null;
+        for (int i = 0; i < quet.length(); i++) {
+            JSONObject q = quet.optJSONObject(i);
+            if (q == null || !q.optBoolean("hopLe")) continue;
+            String loai = q.optString("loai"), ngay = q.optString("ngay"), gio = q.optString("gio");
+            long ms = q.optLong("ms");
+            if ("IN".equals(loai)) {
+                String[] g = out.get(ngay);
+                if (g == null) out.put(ngay, new String[]{gio, ""});
+                else if (g[0].isEmpty() || gio.compareTo(g[0]) < 0) g[0] = gio;
+                moMs = ms;
+                moNgay = ngay;
+            } else if ("OUT".equals(loai)) {
+                if (moNgay != null && ms - moMs <= 16L * 3600000L) {
+                    out.get(moNgay)[1] = gio;
+                } else {
+                    String[] g = out.get(ngay);
+                    if (g == null) out.put(ngay, new String[]{"", gio});
+                    else g[1] = gio;
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Kỳ "2026-11" → {"2026-10-26", "2026-11-25"}. */
+    private static String[] kyTuDen(String ky) {
+        String[] p = ky == null ? new String[0] : ky.split("-");
+        if (p.length != 2) return null;
+        int y = Integer.parseInt(p[0]), m = Integer.parseInt(p[1]);
+        int py = m == 1 ? y - 1 : y, pm = m == 1 ? 12 : m - 1;
+        return new String[]{String.format(Locale.ROOT, "%04d-%02d-26", py, pm), String.format(Locale.ROOT, "%04d-%02d-25", y, m)};
     }
 
     private void renderSl() {
@@ -965,6 +1060,7 @@ public class MainActivity extends Activity implements LocationListener {
             new AlertDialog.Builder(this).setTitle(cb.isEmpty() ? "Thành công" : "Đã ghi nhận – có lưu ý")
                     .setMessage(msg).setPositiveButton("OK", null).show();
             taiTrangThai(false);
+            taiMe(null);
             capNhatNut();
         }, e -> {
             busy = false;
