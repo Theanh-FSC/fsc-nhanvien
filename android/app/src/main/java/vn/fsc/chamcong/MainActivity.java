@@ -258,14 +258,35 @@ public class MainActivity extends Activity implements LocationListener {
     /* Màn chấm công                                                       */
     /* ------------------------------------------------------------------ */
 
+    // Khung chính: đầu trang + nội dung theo tab + thanh tab dưới
+    private static final String[][] TABS = {
+            {"scan", "⏱", "Chấm công"}, {"cong", "📅", "Ngày công"}, {"sl", "📦", "Sản lượng"},
+            {"luong", "💵", "Lương"}, {"nghi", "📝", "Xin nghỉ"}};
+    private String tab = "scan";
+    private LinearLayout content;
+    private ScrollView contentScroll;
+    private View scanView;
+    private LinearLayout nav;
+    private JSONObject me;              // dữ liệu action 'me' (ngày công, sản lượng, lương, đơn nghỉ)
+    private String meErr;
+    private boolean dangTaiMe;
+    private String statusErr;           // lỗi tải trạng thái chấm công / điểm GPS
+    private boolean statusOk;
+    private String loaiNghi = "";
+    private String ngayNghi = "";
+    private String ghiChuNghi = "";
+
     private void showMain() {
         onMain = true;
-        LinearLayout root = page();
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setBackgroundColor(C_BG);
 
         // Đầu trang: tên + đăng xuất
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setPadding(dp(18), dp(14), dp(18), dp(8));
         LinearLayout who = new LinearLayout(this);
         who.setOrientation(LinearLayout.VERTICAL);
         who.addView(title(sp.getString("name", ""), 20, C_TEXT));
@@ -279,8 +300,67 @@ public class MainActivity extends Activity implements LocationListener {
                 .setPositiveButton("Đăng xuất", (d, w) -> dangXuat(null))
                 .setNegativeButton("Hủy", null).show());
         head.addView(out);
-        root.addView(head);
-        root.addView(space(14));
+        shell.addView(head);
+
+        contentScroll = new ScrollView(this);
+        contentScroll.setFillViewport(true);
+        content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(18), dp(6), dp(18), dp(24));
+        contentScroll.addView(content);
+        shell.addView(contentScroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
+
+        nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        nav.setBackgroundColor(Color.WHITE);
+        nav.setElevation(dp(8));
+        for (final String[] t : TABS) {
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setGravity(Gravity.CENTER);
+            item.setPadding(0, dp(7), 0, dp(7));
+            item.setTag(t[0]);
+            TextView ic = text(t[1], 18, C_TEXT);
+            ic.setGravity(Gravity.CENTER);
+            TextView lb = text(t[2], 11, C_MUTED);
+            lb.setGravity(Gravity.CENTER);
+            lb.setSingleLine(true);
+            item.addView(ic);
+            item.addView(lb);
+            item.setOnClickListener(v -> chonTab(t[0]));
+            nav.addView(item, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        }
+        shell.addView(nav);
+        setContentView(shell);
+
+        scanView = buildScan();
+        chonTab(tab);
+        capNhatNut();
+        batViTri();
+        ui.removeCallbacks(tick);
+        ui.post(tick);
+        taiTrangThai(false);
+        taiMe(null);
+    }
+
+    private void chonTab(String t) {
+        tab = t;
+        for (int i = 0; i < nav.getChildCount(); i++) {
+            LinearLayout item = (LinearLayout) nav.getChildAt(i);
+            boolean on = t.equals(item.getTag());
+            ((TextView) item.getChildAt(1)).setTextColor(on ? C_PRIMARY : C_MUTED);
+            ((TextView) item.getChildAt(1)).setTypeface(on ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+            item.setBackgroundColor(on ? Color.parseColor("#E7F2EE") : Color.WHITE);
+        }
+        content.removeAllViews();
+        if ("scan".equals(t)) content.addView(scanView);
+        else renderTab();
+        contentScroll.scrollTo(0, 0);
+    }
+
+    private View buildScan() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
 
         // Đồng hồ
         LinearLayout clock = card();
@@ -330,8 +410,7 @@ public class MainActivity extends Activity implements LocationListener {
         LinearLayout hist = card();
         LinearLayout hh = new LinearLayout(this);
         hh.setOrientation(LinearLayout.HORIZONTAL);
-        TextView lb = label("CHẤM CÔNG 7 NGÀY GẦN ĐÂY");
-        hh.addView(lb, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        hh.addView(label("CHẤM CÔNG 7 NGÀY GẦN ĐÂY"), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         TextView reload = text("Tải lại", 14, C_PRIMARY);
         reload.setOnClickListener(v -> taiTrangThai(true));
         hh.addView(reload);
@@ -342,13 +421,431 @@ public class MainActivity extends Activity implements LocationListener {
         root.addView(hist);
         root.addView(space(10));
         root.addView(text("Phiên bản " + phienBan() + " · Chỉ chấm công được khi ở trong vùng của kho.", 12, C_MUTED));
+        return root;
+    }
 
-        setContentView(scroll(root));
-        capNhatNut();
-        batViTri();
-        ui.removeCallbacks(tick);
-        ui.post(tick);
-        taiTrangThai(false);
+    /* ------------------------------------------------------------------ */
+    /* Ngày công, sản lượng, lương, xin nghỉ (action 'me')                 */
+    /* ------------------------------------------------------------------ */
+
+    private void taiMe(String ky) {
+        if (dangTaiMe) return;
+        dangTaiMe = true;
+        meErr = null;
+        if (!"scan".equals(tab) && me == null) renderTab();
+        final String k = ky == null ? (me == null ? "" : me.optString("ky")) : ky;
+        chay(() -> {
+            JSONObject req = base("me");
+            req.put("ky", k);
+            return Api.call(req);
+        }, res -> {
+            dangTaiMe = false;
+            me = res;
+            if (onMain && !"scan".equals(tab)) renderTab();
+        }, e -> {
+            dangTaiMe = false;
+            if ("auth".equals(e.code)) { dangXuat(e.getMessage()); return; }
+            meErr = e.getMessage();
+            if (onMain && !"scan".equals(tab)) renderTab();
+        });
+    }
+
+    private void renderTab() {
+        content.removeAllViews();
+        if (me == null) {
+            LinearLayout c = card();
+            if (meErr != null) {
+                c.addView(text(meErr, 15, C_BAD));
+                c.addView(space(10));
+                Button b = bigButton("THỬ LẠI", C_PRIMARY);
+                b.setOnClickListener(v -> taiMe(null));
+                c.addView(b);
+            } else {
+                c.addView(text("Đang tải dữ liệu…", 15, C_MUTED));
+            }
+            content.addView(c);
+            return;
+        }
+        if (!"nghi".equals(tab)) {
+            content.addView(chonKy());
+            content.addView(space(12));
+        }
+        if ("cong".equals(tab)) renderCong();
+        else if ("sl".equals(tab)) renderSl();
+        else if ("luong".equals(tab)) renderLuong();
+        else if ("nghi".equals(tab)) renderNghi();
+    }
+
+    /** Chọn kỳ lương 26–25: ◀ kỳ trước · kỳ sau ▶ */
+    private View chonKy() {
+        LinearLayout c = card();
+        c.setOrientation(LinearLayout.HORIZONTAL);
+        c.setGravity(Gravity.CENTER_VERTICAL);
+        c.setPadding(dp(6), dp(6), dp(6), dp(6));
+        JSONArray ds = me.optJSONArray("dsKy");
+        final String ky = me.optString("ky");
+        int idx = -1;
+        if (ds != null) for (int i = 0; i < ds.length(); i++) if (ky.equals(ds.optString(i))) idx = i;
+        final String truoc = ds != null && idx >= 0 && idx + 1 < ds.length() ? ds.optString(idx + 1) : null;
+        final String sau = ds != null && idx > 0 ? ds.optString(idx - 1) : null;
+        TextView l = title("◀", 20, truoc == null ? C_DISABLED : C_PRIMARY);
+        l.setPadding(dp(14), dp(8), dp(14), dp(8));
+        if (truoc != null) l.setOnClickListener(v -> taiMe(truoc));
+        TextView r = title("▶", 20, sau == null ? C_DISABLED : C_PRIMARY);
+        r.setPadding(dp(14), dp(8), dp(14), dp(8));
+        if (sau != null) r.setOnClickListener(v -> taiMe(sau));
+        LinearLayout mid = new LinearLayout(this);
+        mid.setOrientation(LinearLayout.VERTICAL);
+        mid.setGravity(Gravity.CENTER);
+        mid.addView(title(dangTaiMe ? "Đang tải…" : kyTen(ky), 16, C_TEXT));
+        mid.addView(text(kyKhoang(ky), 13, C_MUTED));
+        c.addView(l);
+        c.addView(mid, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        c.addView(r);
+        return c;
+    }
+
+    private void renderCong() {
+        JSONArray rows = me.optJSONArray("ngayCong");
+        if (rows == null) rows = new JSONArray();
+        double tong = 0, tc = 0;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject r = rows.optJSONObject(i);
+            tong += r.optDouble("cong", 0);
+            tc += r.optDouble("tangCa", 0);
+        }
+        LinearLayout s = card();
+        s.addView(stats(num(tong, 1), "Ngày công", num(tc, 1), "Giờ tăng ca"));
+        String cn = me.optString("capNhatLuc");
+        s.addView(space(6));
+        s.addView(text("Ngày công theo bảng chấm công đã duyệt trên Dashboard" + (cn.isEmpty() ? "" : ", cập nhật lúc " + cn) + ".", 12, C_MUTED));
+        content.addView(s);
+        content.addView(space(12));
+        LinearLayout c = card();
+        if (rows.length() == 0) c.addView(text("Chưa có ngày công trong kỳ này.", 14, C_MUTED));
+        for (int i = rows.length() - 1; i >= 0; i--) {
+            JSONObject r = rows.optJSONObject(i);
+            StringBuilder sub = new StringBuilder(r.optString("trangThai"));
+            if (!r.optString("vao").isEmpty()) sub.append(" · vào ").append(r.optString("vao"));
+            if (!r.optString("ra").isEmpty()) sub.append(" · ra ").append(r.optString("ra"));
+            if (r.optDouble("tangCa", 0) > 0) sub.append(" · tăng ca ").append(num(r.optDouble("tangCa"), 1)).append(" giờ");
+            c.addView(dongNgay(thuNgan(r.optString("ngay")) + " " + dm(r.optString("ngay")), num(r.optDouble("cong", 0), 1) + " công", sub.toString(), i > 0));
+        }
+        content.addView(c);
+    }
+
+    private void renderSl() {
+        JSONArray rows = me.optJSONArray("sanLuong");
+        if (rows == null) rows = new JSONArray();
+        double slKfm = 0, tien = 0;
+        java.util.TreeMap<String, java.util.List<JSONObject>> byDay = new java.util.TreeMap<>(java.util.Collections.reverseOrder());
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject r = rows.optJSONObject(i);
+            if ("KFM".equals(r.optString("nguon"))) slKfm += r.optDouble("soLuong", 0);
+            tien += r.optDouble("thanhTien", 0);
+            String d = r.optString("ngay");
+            if (!byDay.containsKey(d)) byDay.put(d, new java.util.ArrayList<JSONObject>());
+            byDay.get(d).add(r);
+        }
+        LinearLayout s = card();
+        s.addView(stats(num(slKfm, 0), "Sản lượng KFM", money(tien), "Tiền sản lượng (KFM + CPG)"));
+        content.addView(s);
+        content.addView(space(12));
+        LinearLayout c = card();
+        if (byDay.isEmpty()) c.addView(text("Chưa có sản lượng trong kỳ này.", 14, C_MUTED));
+        int n = 0;
+        for (java.util.Map.Entry<String, java.util.List<JSONObject>> e : byDay.entrySet()) {
+            double t = 0;
+            StringBuilder sub = new StringBuilder();
+            for (JSONObject r : e.getValue()) {
+                t += r.optDouble("thanhTien", 0);
+                if (sub.length() > 0) sub.append('\n');
+                sub.append(r.optString("nguon")).append(" · ").append(r.optString("congViec")).append(" · ")
+                        .append(num(r.optDouble("soLuong", 0), 2)).append(' ').append(r.optString("dvt"))
+                        .append(" × ").append(num(r.optDouble("donGia", 0), 2)).append(" đ");
+            }
+            n++;
+            c.addView(dongNgay(thuNgan(e.getKey()) + " " + dm(e.getKey()), money(t), sub.toString(), n < byDay.size()));
+        }
+        content.addView(c);
+    }
+
+    private void renderLuong() {
+        JSONArray ls = me.optJSONArray("luong");
+        if (ls == null || ls.length() == 0) {
+            LinearLayout c = card();
+            c.addView(text("Chưa có bảng lương kỳ này.", 14, C_MUTED));
+            content.addView(c);
+            return;
+        }
+        boolean dangChay = me.optString("ky").equals(me.optString("kyHienTai"));
+        for (int i = 0; i < ls.length(); i++) {
+            JSONObject l = ls.optJSONObject(i);
+            LinearLayout c = card();
+            c.addView(title("Phiếu lương " + kyTen(me.optString("ky")), 17, C_TEXT));
+            if (dangChay) {
+                c.addView(space(6));
+                c.addView(text("Kỳ đang chạy: số tạm tính, sẽ thay đổi đến cuối kỳ.", 13, C_WARN));
+            }
+            c.addView(space(6));
+            c.addView(dong("Hình thức lương", l.optString("hinhThuc"), true));
+            c.addView(dong("Ngày công", num(l.optDouble("ngayCong", 0), 1), true));
+            c.addView(dong("Giờ tăng ca", num(l.optDouble("gioTangCa", 0), 1), l.optDouble("gioTangCa", 0) > 0));
+            c.addView(dong("Sản lượng KFM", num(l.optDouble("slKfm", 0), 0), l.optDouble("slKfm", 0) > 0));
+            c.addView(dong("Tiền sản lượng KFM", money(l.optDouble("tienKfm", 0)), l.optDouble("tienKfm", 0) > 0));
+            c.addView(dong("Tiền CPG", money(l.optDouble("tienCpg", 0)), l.optDouble("tienCpg", 0) > 0));
+            c.addView(dong("Lương ngày", money(l.optDouble("luongNgay", 0)), l.optDouble("luongNgay", 0) > 0));
+            c.addView(dong("Tiền tăng ca", money(l.optDouble("tienTangCa", 0)), l.optDouble("tienTangCa", 0) > 0));
+            c.addView(dong("Phụ cấp", money(l.optDouble("phuCap", 0)), l.optDouble("phuCap", 0) > 0));
+            c.addView(dong("Tổng thu nhập", money(l.optDouble("tongThuNhap", 0)), true));
+            c.addView(dong("Thuế TNCN (10%)", "− " + money(l.optDouble("thue", 0)), true));
+            c.addView(dong("Tạm ứng", "− " + money(l.optDouble("tamUng", 0)), l.optDouble("tamUng", 0) > 0));
+            View line = new View(this);
+            line.setBackgroundColor(Color.parseColor("#E1E6E3"));
+            c.addView(line, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)));
+            LinearLayout tot = new LinearLayout(this);
+            tot.setPadding(0, dp(10), 0, dp(4));
+            tot.addView(title("Thực nhận", 17, C_TEXT), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            tot.addView(title(money(l.optDouble("thucNhan", 0)), 19, C_PRIMARY));
+            c.addView(tot);
+            String chot = l.optString("chotLuc");
+            c.addView(text((chot.isEmpty() ? "" : "Chốt lúc " + chot + ". ") + "Thắc mắc về lương, liên hệ quản lý.", 12, C_MUTED));
+            content.addView(c);
+            content.addView(space(12));
+        }
+    }
+
+    private void renderNghi() {
+        final String[][] loai = {{"PHEP", "Nghỉ phép"}, {"NUA_NGAY", "Nghỉ nửa ngày"}, {"OM", "Nghỉ ốm"}, {"KHONG_LUONG", "Nghỉ không lương"}};
+        if (ngayNghi.isEmpty()) ngayNghi = fmt("yyyy-MM-dd", new Date());
+        LinearLayout c = card();
+        c.addView(title("Xin nghỉ", 17, C_TEXT));
+        c.addView(space(10));
+        c.addView(label("LOẠI NGHỈ"));
+        for (int row = 0; row < 2; row++) {
+            LinearLayout hr = new LinearLayout(this);
+            hr.setOrientation(LinearLayout.HORIZONTAL);
+            for (int col = 0; col < 2; col++) {
+                final String[] it = loai[row * 2 + col];
+                boolean on = it[0].equals(loaiNghi);
+                TextView b = text(it[1], 15, on ? Color.WHITE : C_TEXT);
+                b.setGravity(Gravity.CENTER);
+                b.setPadding(dp(6), dp(12), dp(6), dp(12));
+                GradientDrawable g = new GradientDrawable();
+                g.setColor(on ? C_PRIMARY : Color.parseColor("#F7F9F8"));
+                g.setCornerRadius(dp(10));
+                g.setStroke(dp(1), on ? C_PRIMARY : Color.parseColor("#CBD3CF"));
+                b.setBackground(g);
+                b.setOnClickListener(v -> { loaiNghi = it[0]; renderTab(); });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+                lp.setMargins(col == 0 ? 0 : dp(5), dp(4), col == 0 ? dp(5) : 0, dp(4));
+                hr.addView(b, lp);
+            }
+            c.addView(hr);
+        }
+        c.addView(space(10));
+        c.addView(label("NGÀY NGHỈ"));
+        TextView ngay = text("📅  " + thuNgan(ngayNghi) + " " + dmy(ngayNghi), 17, C_TEXT);
+        ngay.setPadding(dp(12), dp(12), dp(12), dp(12));
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(Color.parseColor("#F7F9F8"));
+        g.setCornerRadius(dp(10));
+        g.setStroke(dp(1), Color.parseColor("#CBD3CF"));
+        ngay.setBackground(g);
+        ngay.setOnClickListener(v -> chonNgayNghi());
+        c.addView(ngay);
+        c.addView(space(10));
+        c.addView(label("LÝ DO (KHÔNG BẮT BUỘC)"));
+        final EditText note = input("Lý do", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        note.setFilters(new InputFilter[]{new InputFilter.LengthFilter(200)});
+        note.setText(ghiChuNghi);
+        c.addView(note);
+        c.addView(space(10));
+        final TextView msg = text("", 14, C_BAD);
+        final Button gui = bigButton("GỬI ĐƠN NGHỈ", C_PRIMARY);
+        c.addView(gui);
+        c.addView(space(6));
+        c.addView(msg);
+        c.addView(text("Gửi đơn từ 7 ngày trước đến 60 ngày tới. Đơn tự cập nhật vào bảng chấm công. Gửi lại cùng ngày sẽ thay đơn cũ. Hủy được khi ngày nghỉ chưa qua.", 12, C_MUTED));
+        content.addView(c);
+        gui.setOnClickListener(v -> {
+            if (loaiNghi.isEmpty()) { msg.setTextColor(C_BAD); msg.setText("Chọn loại nghỉ."); return; }
+            ghiChuNghi = note.getText().toString().trim();
+            anBanPhim(note);
+            gui.setEnabled(false);
+            gui.setText("Đang gửi…");
+            final String loaiGui = loaiNghi, ngayGui = ngayNghi, lyDo = ghiChuNghi;
+            chay(() -> {
+                JSONObject req = base("leave");
+                req.put("type", loaiGui);
+                req.put("date", ngayGui);
+                req.put("note", lyDo);
+                return Api.call(req);
+            }, res -> {
+                try { me.put("nghi", res.optJSONArray("nghi")); } catch (Exception ignored) { }
+                ghiChuNghi = "";
+                String ten = loaiGui;
+                for (String[] it : loai) if (it[0].equals(loaiGui)) ten = it[1];
+                loaiNghi = "";
+                renderTab();
+                new AlertDialog.Builder(this).setTitle("Đã gửi đơn")
+                        .setMessage("Đã gửi " + ten + " ngày " + dmy(ngayGui) + ".").setPositiveButton("OK", null).show();
+            }, e -> {
+                if ("auth".equals(e.code)) { dangXuat(e.getMessage()); return; }
+                gui.setEnabled(true);
+                gui.setText("GỬI ĐƠN NGHỈ");
+                msg.setTextColor(C_BAD);
+                msg.setText(e.getMessage());
+            });
+        });
+
+        // Danh sách đơn
+        JSONArray ds = me.optJSONArray("nghi");
+        if (ds == null || ds.length() == 0) return;
+        content.addView(space(12));
+        LinearLayout l = card();
+        l.addView(title("Đơn nghỉ của bạn", 17, C_TEXT));
+        l.addView(space(6));
+        String homNay = fmt("yyyy-MM-dd", new Date());
+        for (int i = 0; i < ds.length(); i++) {
+            final JSONObject n = ds.optJSONObject(i);
+            boolean huy = "Đã hủy".equals(n.optString("trangThai"));
+            LinearLayout r = new LinearLayout(this);
+            r.setOrientation(LinearLayout.HORIZONTAL);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.setPadding(0, dp(8), 0, dp(8));
+            LinearLayout left = new LinearLayout(this);
+            left.setOrientation(LinearLayout.VERTICAL);
+            left.addView(title(thuNgan(n.optString("ngay")) + " " + dmy(n.optString("ngay")) + " · " + n.optString("loaiTen"), 15, C_TEXT));
+            String sub = (huy ? "Đã hủy" : "Đã gửi") + (n.optString("lyDo").isEmpty() ? "" : " · " + n.optString("lyDo"));
+            left.addView(text(sub, 13, huy ? C_BAD : C_OK));
+            r.addView(left, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            if (!huy && n.optString("ngay").compareTo(homNay) >= 0) {
+                final TextView b = text("Hủy", 14, C_BAD);
+                b.setPadding(dp(14), dp(8), dp(4), dp(8));
+                b.setOnClickListener(v -> new AlertDialog.Builder(this)
+                        .setMessage("Hủy đơn " + n.optString("loaiTen") + " ngày " + dmy(n.optString("ngay")) + "?")
+                        .setPositiveButton("Hủy đơn", (d, w) -> {
+                            b.setEnabled(false);
+                            chay(() -> {
+                                JSONObject req = base("cancelLeave");
+                                req.put("id", n.optString("id"));
+                                return Api.call(req);
+                            }, res -> {
+                                try { me.put("nghi", res.optJSONArray("nghi")); } catch (Exception ignored) { }
+                                renderTab();
+                            }, e -> {
+                                if ("auth".equals(e.code)) { dangXuat(e.getMessage()); return; }
+                                b.setEnabled(true);
+                                new AlertDialog.Builder(this).setMessage(e.getMessage()).setPositiveButton("OK", null).show();
+                            });
+                        })
+                        .setNegativeButton("Không", null).show());
+                r.addView(b);
+            }
+            l.addView(r);
+        }
+        content.addView(l);
+    }
+
+    private void chonNgayNghi() {
+        java.util.Calendar c = java.util.Calendar.getInstance(TZ);
+        String[] p = ngayNghi.split("-");
+        int y = Integer.parseInt(p[0]), m = Integer.parseInt(p[1]) - 1, d = Integer.parseInt(p[2]);
+        android.app.DatePickerDialog dlg = new android.app.DatePickerDialog(this, (view, yy, mm, dd) -> {
+            ngayNghi = String.format(Locale.ROOT, "%04d-%02d-%02d", yy, mm + 1, dd);
+            renderTab();
+        }, y, m, d);
+        long now = c.getTimeInMillis();
+        dlg.getDatePicker().setMinDate(now - 7L * 86400000L);
+        dlg.getDatePicker().setMaxDate(now + 60L * 86400000L);
+        dlg.show();
+    }
+
+    private View stats(String v1, String k1, String v2, String k2) {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        for (String[] s : new String[][]{{v1, k1}, {v2, k2}}) {
+            LinearLayout b = new LinearLayout(this);
+            b.setOrientation(LinearLayout.VERTICAL);
+            b.addView(title(s[0], 22, C_PRIMARY));
+            b.addView(text(s[1], 12, C_MUTED));
+            r.addView(b, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        }
+        return r;
+    }
+
+    private View dong(String k, String v, boolean show) {
+        LinearLayout r = new LinearLayout(this);
+        if (!show) { r.setVisibility(View.GONE); return r; }
+        r.setPadding(0, dp(6), 0, dp(6));
+        r.addView(text(k, 15, C_MUTED), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        r.addView(title(v, 15, C_TEXT));
+        return r;
+    }
+
+    private View dongNgay(String trai, String phai, String sub, boolean ke) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(0, dp(8), 0, dp(8));
+        LinearLayout r = new LinearLayout(this);
+        r.addView(title(trai, 15, C_TEXT), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        r.addView(title(phai, 15, C_TEXT));
+        box.addView(r);
+        if (sub != null && !sub.isEmpty()) {
+            TextView s = text(sub, 13, C_MUTED);
+            s.setLineSpacing(dp(2), 1f);
+            box.addView(s);
+        }
+        if (ke) {
+            LinearLayout wrap = new LinearLayout(this);
+            wrap.setOrientation(LinearLayout.VERTICAL);
+            wrap.addView(box);
+            View line = new View(this);
+            line.setBackgroundColor(Color.parseColor("#EEF1EF"));
+            wrap.addView(line, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)));
+            return wrap;
+        }
+        return box;
+    }
+
+    private static String num(double x, int dec) {
+        if (Math.abs(x - Math.rint(x)) < 1e-9) dec = 0;
+        String s = String.format(Locale.ROOT, "%,." + dec + "f", x);
+        return s.replace(",", "\u0001").replace(".", ",").replace("\u0001", ".");
+    }
+
+    private static String money(double x) { return num(Math.round(x), 0) + " đ"; }
+
+    private static String kyTen(String ky) {
+        String[] p = ky == null ? new String[0] : ky.split("-");
+        return p.length == 2 ? "Kỳ " + p[1] + "/" + p[0] : ky;
+    }
+
+    private static String kyKhoang(String ky) {
+        String[] p = ky == null ? new String[0] : ky.split("-");
+        if (p.length != 2) return "";
+        int m = Integer.parseInt(p[1]);
+        int truoc = m == 1 ? 12 : m - 1;
+        return String.format(Locale.ROOT, "26/%02d – 25/%02d", truoc, m);
+    }
+
+    private static String dmy(String iso) {
+        String[] p = iso == null ? new String[0] : iso.split("-");
+        return p.length == 3 ? p[2] + "/" + p[1] + "/" + p[0] : "";
+    }
+
+    private static String thuNgan(String iso) {
+        try {
+            SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT);
+            f.setTimeZone(TZ);
+            java.util.Calendar c = java.util.Calendar.getInstance(TZ);
+            c.setTime(f.parse(iso));
+            String[] t = {"CN", "T2", "T3", "T4", "T5", "T6", "T7"};
+            return t[c.get(java.util.Calendar.DAY_OF_WEEK) - 1];
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private void taiTrangThai(final boolean baoLoi) {
@@ -361,14 +858,22 @@ public class MainActivity extends Activity implements LocationListener {
             saiSoToiDa = res.optDouble("saiSoToiDa", 100);
             JSONObject p = res.optJSONObject("profile");
             if (p != null) sp.edit().putString("name", p.optString("name")).putString("team", p.optString("team")).apply();
+            statusOk = true;
+            statusErr = null;
             hienCa(res.optJSONObject("caMo"));
             hienLichSu(res.optJSONArray("ganDay"));
             capNhatGps();
         }, e -> {
             if ("auth".equals(e.code)) { dangXuat(e.getMessage()); return; }
-            if (baoLoi || tvShift.getText().toString().equals("…")) {
+            // Máy chủ còn bản code cũ (chưa có action 'status'): báo rõ để quản lý triển khai phiên bản mới.
+            statusErr = e.getMessage().contains("Không rõ thao tác")
+                    ? "Máy chủ chưa cập nhật bản mới cho app (FSC_WebApi.gs 06/11). Báo quản lý triển khai phiên bản mới."
+                    : e.getMessage();
+            capNhatGps();
+            if (baoLoi || !statusOk) {
                 tvShift.setText("Chưa tải được dữ liệu");
-                tvMsg.setText(e.getMessage());
+                tvMsg.setTextColor(C_BAD);
+                tvMsg.setText(statusErr);
             }
         });
     }
@@ -609,8 +1114,12 @@ public class MainActivity extends Activity implements LocationListener {
                 setGps("Đang lấy vị trí GPS…", "Đứng chỗ thoáng, chờ vài giây.", C_WARN);
             } else if (laViTriGia(l)) {
                 setGps("Phát hiện vị trí giả lập", "Tắt ứng dụng giả lập vị trí (Fake GPS) để chấm công.", C_BAD);
+            } else if (!statusOk && statusErr != null) {
+                setGps("Chưa tải được điểm chấm công", statusErr + "\nChạm vào đây để thử lại.", C_BAD);
+            } else if (!statusOk) {
+                setGps("Đang tải điểm chấm công…", "Chờ vài giây.", C_WARN);
             } else if (diem.length() == 0) {
-                setGps("Chưa có tọa độ kho", "Đang tải điểm chấm công… Nếu vẫn báo vậy, báo quản lý cài tọa độ kho.", C_WARN);
+                setGps("Chưa có tọa độ kho", "Báo quản lý điền Vĩ độ / Kinh độ của kho trong tab DiemQuet.", C_BAD);
             } else {
                 // Điểm chấm công gần nhất
                 double minD = Double.MAX_VALUE;
