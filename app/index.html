@@ -560,22 +560,33 @@ function luongHtml() {
   if (!ls.length) return '<div class="card muted">Chưa có bảng lương kỳ này.</div>';
   const dangChay = me.ky === me.kyHienTai;
   const kv = (k, v, show) => show === false ? '' : `<div class="kv"><span>${k}</span><b>${v}</b></div>`;
+  const ct = me.chiTiet && Array.isArray(me.chiTiet.thu) ? me.chiTiet : null;  // chi tiết phiếu lương giống Dashboard (08/11/2026)
   return ls.map(l => `<div class="card"><h2>Phiếu lương ${esc(kyTen(me.ky))}</h2>
     ${dangChay ? '<div class="small warnc">Kỳ đang chạy: số tạm tính, sẽ thay đổi đến cuối kỳ.</div>' : ''}
     ${kv('Hình thức lương', esc(l.hinhThuc))}
     ${kv('Ngày công', num(l.ngayCong, 1))}
     ${kv('Giờ tăng ca', num(l.gioTangCa, 1), l.gioTangCa > 0)}
     ${kv('Sản lượng KFM', num(l.slKfm, 0), l.slKfm > 0)}
+    ${ct ? `<div class="lbl" style="margin-top:10px">KHOẢN THU</div>
+    ${(ct.thu || []).filter(x => Number(x[1])).map(x => kv(esc(x[0]), money(x[1]))).join('')}` : `
     ${kv('Tiền sản lượng KFM', money(l.tienKfm), l.tienKfm > 0)}
     ${kv('Tiền CPG', money(l.tienCpg), l.tienCpg > 0)}
     ${kv('Lương ngày', money(l.luongNgay), l.luongNgay > 0)}
     ${kv('Tiền tăng ca', money(l.tienTangCa), l.tienTangCa > 0)}
-    ${kv('Phụ cấp', money(l.phuCap), l.phuCap > 0)}
-    ${kv('Tổng thu nhập', money(l.tongThuNhap))}
+    ${kv('Phụ cấp', money(l.phuCap), l.phuCap > 0)}`}
+    ${kv('<b>Tổng thu nhập</b>', money(l.tongThuNhap))}
+    ${ct ? `<div class="lbl" style="margin-top:10px">KHOẢN KHẤU TRỪ</div>
+    ${(ct.tru || []).filter((x, i) => i === 0 || Number(x[1])).map(x => kv(esc(x[0]), '− ' + money(x[1]))).join('')}` : `
     ${kv('Thuế TNCN (10%)', '− ' + money(l.thue))}
-    ${kv('Tạm ứng', '− ' + money(l.tamUng), l.tamUng > 0)}
+    ${kv('Tạm ứng', '− ' + money(l.tamUng), l.tamUng > 0)}`}
     <div class="kv total"><span style="color:var(--text)">Thực nhận</span><b>${money(l.thucNhan)}</b></div>
-    <p class="small muted">${l.chotLuc ? 'Chốt lúc ' + esc(l.chotLuc) + '. ' : ''}Thắc mắc về lương, liên hệ quản lý.</p></div>`).join('');
+    <p class="small muted">${l.chotLuc ? 'Chốt lúc ' + esc(l.chotLuc) + '. ' : ''}Thắc mắc về lương, liên hệ quản lý.</p></div>
+    ${ct && (ct.hoSo || []).length ? `<div class="card"><h2>Lương & phụ cấp theo hồ sơ</h2>
+    <div class="small muted">Chi phí nhân công / tháng theo hồ sơ nhân sự. Tham khảo, không cộng vào Thực nhận.</div>
+    ${ct.hoSo.map(x => kv(esc(x[0]), money(x[1]))).join('')}
+    ${kv('<b>Cộng chi phí nhân công</b>', money(ct.hoSoTong))}
+    ${kv('NLĐ đóng BHXH (10,5%)', money(ct.hoSoNld), ct.hoSoNld > 0)}
+    <div class="kv total"><span style="color:var(--text)">Tổng chi phí 1 NV / tháng</span><b>${money(ct.hoSoNet)}</b></div></div>` : ''}`).join('');
 }
 
 function nghiHtml() {

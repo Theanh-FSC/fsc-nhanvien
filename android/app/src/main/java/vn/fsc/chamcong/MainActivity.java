@@ -687,14 +687,36 @@ public class MainActivity extends Activity implements LocationListener {
             c.addView(dong("Ngày công", num(l.optDouble("ngayCong", 0), 1), true));
             c.addView(dong("Giờ tăng ca", num(l.optDouble("gioTangCa", 0), 1), l.optDouble("gioTangCa", 0) > 0));
             c.addView(dong("Sản lượng KFM", num(l.optDouble("slKfm", 0), 0), l.optDouble("slKfm", 0) > 0));
-            c.addView(dong("Tiền sản lượng KFM", money(l.optDouble("tienKfm", 0)), l.optDouble("tienKfm", 0) > 0));
-            c.addView(dong("Tiền CPG", money(l.optDouble("tienCpg", 0)), l.optDouble("tienCpg", 0) > 0));
-            c.addView(dong("Lương ngày", money(l.optDouble("luongNgay", 0)), l.optDouble("luongNgay", 0) > 0));
-            c.addView(dong("Tiền tăng ca", money(l.optDouble("tienTangCa", 0)), l.optDouble("tienTangCa", 0) > 0));
-            c.addView(dong("Phụ cấp", money(l.optDouble("phuCap", 0)), l.optDouble("phuCap", 0) > 0));
+            JSONObject ct = me.optJSONObject("chiTiet");
+            JSONArray thu = ct == null ? null : ct.optJSONArray("thu");
+            if (thu != null) {
+                // 08/11/2026: phiếu lương chi tiết giống Dashboard (khoản thu / khấu trừ theo bảng lương mới nhất).
+                c.addView(space(8));
+                c.addView(label("KHOẢN THU"));
+                for (int k = 0; k < thu.length(); k++) {
+                    JSONArray x = thu.optJSONArray(k);
+                    if (x != null && x.optDouble(1, 0) != 0) c.addView(dong(x.optString(0), money(x.optDouble(1, 0)), true));
+                }
+            } else {
+                c.addView(dong("Tiền sản lượng KFM", money(l.optDouble("tienKfm", 0)), l.optDouble("tienKfm", 0) > 0));
+                c.addView(dong("Tiền CPG", money(l.optDouble("tienCpg", 0)), l.optDouble("tienCpg", 0) > 0));
+                c.addView(dong("Lương ngày", money(l.optDouble("luongNgay", 0)), l.optDouble("luongNgay", 0) > 0));
+                c.addView(dong("Tiền tăng ca", money(l.optDouble("tienTangCa", 0)), l.optDouble("tienTangCa", 0) > 0));
+                c.addView(dong("Phụ cấp", money(l.optDouble("phuCap", 0)), l.optDouble("phuCap", 0) > 0));
+            }
             c.addView(dong("Tổng thu nhập", money(l.optDouble("tongThuNhap", 0)), true));
-            c.addView(dong("Thuế TNCN (10%)", "− " + money(l.optDouble("thue", 0)), true));
-            c.addView(dong("Tạm ứng", "− " + money(l.optDouble("tamUng", 0)), l.optDouble("tamUng", 0) > 0));
+            JSONArray tru = ct == null ? null : ct.optJSONArray("tru");
+            if (thu != null && tru != null) {
+                c.addView(space(8));
+                c.addView(label("KHOẢN KHẤU TRỪ"));
+                for (int k = 0; k < tru.length(); k++) {
+                    JSONArray x = tru.optJSONArray(k);
+                    if (x != null && (k == 0 || x.optDouble(1, 0) != 0)) c.addView(dong(x.optString(0), "− " + money(x.optDouble(1, 0)), true));
+                }
+            } else {
+                c.addView(dong("Thuế TNCN (10%)", "− " + money(l.optDouble("thue", 0)), true));
+                c.addView(dong("Tạm ứng", "− " + money(l.optDouble("tamUng", 0)), l.optDouble("tamUng", 0) > 0));
+            }
             View line = new View(this);
             line.setBackgroundColor(Color.parseColor("#E1E6E3"));
             c.addView(line, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)));
@@ -707,6 +729,27 @@ public class MainActivity extends Activity implements LocationListener {
             c.addView(text((chot.isEmpty() ? "" : "Chốt lúc " + chot + ". ") + "Thắc mắc về lương, liên hệ quản lý.", 12, C_MUTED));
             content.addView(c);
             content.addView(space(12));
+            JSONArray hs = ct == null ? null : ct.optJSONArray("hoSo");
+            if (hs != null && hs.length() > 0) {
+                LinearLayout h = card();
+                h.addView(title("Lương & phụ cấp theo hồ sơ", 17, C_TEXT));
+                h.addView(space(4));
+                h.addView(text("Chi phí nhân công / tháng theo hồ sơ nhân sự. Tham khảo, không cộng vào Thực nhận.", 12, C_MUTED));
+                h.addView(space(6));
+                for (int k = 0; k < hs.length(); k++) {
+                    JSONArray x = hs.optJSONArray(k);
+                    if (x != null) h.addView(dong(x.optString(0), money(x.optDouble(1, 0)), true));
+                }
+                h.addView(dong("Cộng chi phí nhân công", money(ct.optDouble("hoSoTong", 0)), true));
+                h.addView(dong("NLĐ đóng BHXH (10,5%)", money(ct.optDouble("hoSoNld", 0)), ct.optDouble("hoSoNld", 0) > 0));
+                LinearLayout t2 = new LinearLayout(this);
+                t2.setPadding(0, dp(10), 0, dp(4));
+                t2.addView(title("Tổng chi phí 1 NV / tháng", 15, C_TEXT), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+                t2.addView(title(money(ct.optDouble("hoSoNet", 0)), 17, C_PRIMARY));
+                h.addView(t2);
+                content.addView(h);
+                content.addView(space(12));
+            }
         }
     }
 
