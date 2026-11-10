@@ -156,9 +156,12 @@ let st = { ok: false, err: '', diem: [], banKinh: 200, saiSo: 100, caMo: null, g
 let best = null, gpsErr = null, watchId = null, nativeTimer = null, clockTimer = null, busy = false;
 let segBc = 'phieu';
 let fNghi = { type: 'PHEP', from: '', to: '', part: 'FULL', note: '' };
-let fOt = { type: 'THUONG', date: '', from: '17:30', to: '20:30', reason: 'Xuất kho gấp', note: '' };
+let fOt = { type: 'THUONG', date: '', from: '17:00', to: '19:00', reason: 'Xuất kho gấp', reasonText: '', work: '', touched: false };
 let otAll = false;
-const TABS = [['scan', 'finger', 'Chấm công'], ['bc', 'doc', 'Bảng công'], ['nghi', 'calx', 'Nghỉ phép'], ['ot', 'clockp', 'Tăng ca'], ['me', 'user', 'Cá nhân']];
+const TABS_NV = [['scan', 'finger', 'Chấm công'], ['bc', 'doc', 'Bảng công'], ['nghi', 'calx', 'Nghỉ phép'], ['ot', 'clockp', 'Tăng ca'], ['me', 'user', 'Cá nhân']];
+const TAB_QL = ['ql', 'shield', 'Quản lý'];
+let TABS = TABS_NV;
+const laQL = () => store.get('fsc_app_ql') === '1';
 
 /* ---------------- Hướng dẫn cài (iPhone Safari) ---------------- */
 function showInstall() {
@@ -244,16 +247,33 @@ function savePhien(r) {
   store.set('fsc_app_token', r.token);
   if (r.profile) saveProfile(r.profile);
 }
-function saveProfile(p) { store.set('fsc_app_name', p.name); store.set('fsc_app_team', p.team || ''); store.set('fsc_app_code', p.code); if (p.joinDate != null) store.set('fsc_app_join', p.joinDate); }
-function dangXuat(msg) { store.set('fsc_app_token', ''); me = null; st.ok = false; showLogin(msg); }
+function saveProfile(p) {
+  store.set('fsc_app_name', p.name); store.set('fsc_app_team', p.team || ''); store.set('fsc_app_code', p.code);
+  if (p.joinDate != null) store.set('fsc_app_join', p.joinDate);
+  if (p.quanLy != null) {
+    const truoc = laQL();
+    store.set('fsc_app_ql', p.quanLy ? '1' : '');
+    if (truoc !== laQL()) { dungNav(); if (laQL()) taiMgrOt(); }
+  }
+}
+function dangXuat(msg) { store.set('fsc_app_token', ''); store.set('fsc_app_ql', ''); me = null; st.ok = false; mgr.ot = null; mgr.pres = null; clearInterval(presTimer); showLogin(msg); }
 function authFail(e) { if (e.code === 'auth' || e.code === 'device') { dangXuat(e.message); return true; } return false; }
 
 /* ---------------- Khung chính ---------------- */
+// Thanh tab: quản lý có thêm tab "Quản lý" (Duyệt tăng ca, Có mặt tại kho).
+function dungNav() {
+  if ($('nav').hidden) return;
+  TABS = laQL() ? TABS_NV.slice(0, 4).concat([TAB_QL], TABS_NV.slice(4)) : TABS_NV;
+  $('nav').innerHTML = `<div class="wrap">${TABS.map(t => `<button data-tab="${t[0]}">${I(t[1])}<span>${t[2]}</span>${t[0] === 'ql' && soOtCho() ? `<b class="nbadge">${soOtCho()}</b>` : ''}</button>`).join('')}</div>`;
+  $('nav').classList.toggle('six', TABS.length > 5);
+  $('nav').querySelectorAll('button').forEach(b => { b.onclick = () => chonTab(b.dataset.tab); b.classList.toggle('on', b.dataset.tab === tab); });
+}
+
 function showMain() {
   clearTimeout(lookupTimer);
   $('nav').hidden = false;
-  $('nav').innerHTML = `<div class="wrap">${TABS.map(t => `<button data-tab="${t[0]}">${I(t[1])}<span>${t[2]}</span></button>`).join('')}</div>`;
-  $('nav').querySelectorAll('button').forEach(b => b.onclick = () => chonTab(b.dataset.tab));
+  dungNav();
+  if (laQL()) taiMgrOt();
   chonTab(tab);
   startGps();
   clearInterval(clockTimer);
@@ -266,6 +286,7 @@ function chonTab(t) {
   if (!TABS.some(x => x[0] === t)) t = 'scan';
   tab = t; store.set('fsc_app_tab', t);
   $('nav').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  if (t === 'ql') { taiMgrOt(); if (mgr.seg === 'pres') taiMgrPres(); }
   render();
   window.scrollTo(0, 0);
 }
@@ -283,13 +304,17 @@ function render() {
   if ($('nav').hidden) return;
   let body = '';
   if (tab === 'scan') body = scanHtml();
+  else if (tab === 'ql') body = qlHtml();
   else if (!me) body = meErr ? `<div class="card"><div class="red">${esc(meErr)}</div><button class="btn pri" id="bRetry">THỬ LẠI</button></div>` : '<div class="card muted">Đang tải dữ liệu…</div>';
   else body = tab === 'bc' ? bcHtml() : tab === 'nghi' ? nghiHtml() : tab === 'ot' ? otHtml() : meHtml();
   if (tab === 'me' && !me) body = meHtml();
   $('app').innerHTML = hdrHtml() + `<div class="page wrap">${body}</div>`;
   $('bBell').onclick = showThongBao;
+  const nb = document.querySelector('#nav button[data-tab=ql]');
+  if (nb) { const c = soOtCho(), el = nb.querySelector('.nbadge'); if (c && !el) nb.insertAdjacentHTML('beforeend', `<b class="nbadge">${c}</b>`); else if (el) { if (c) el.textContent = c; else el.remove(); } }
   if ($('bRetry')) $('bRetry').onclick = () => taiMe(null);
   if (tab === 'scan') bindScan();
+  else if (tab === 'ql') bindQl();
   else if (me || tab === 'me') ({ bc: bindBc, nghi: bindNghi, ot: bindOt, me: bindMe }[tab] || (() => {}))();
 }
 
@@ -441,6 +466,7 @@ function scanHtml() {
       <span class="sp"><span class="tt" style="display:block">XÁC NHẬN GIỜ ${mode === 'IN' ? 'VÀO' : 'RA'}</span><span class="ss">${busy ? 'Đang gửi…' : mode === 'IN' ? 'Chạm để bắt đầu ca làm hôm nay' : 'Chạm để kết thúc ca làm hôm nay'}</span></span>
       <span class="ic" style="width:42px;height:42px">${I('sigtap')}</span></button>
     <button class="alt" id="bAlt" ${dis ? 'disabled' : ''}>${mode === 'IN' ? 'Quên vào ca? Xác nhận giờ ra' : 'Bắt đầu ca mới? Xác nhận giờ vào'}</button>
+    ${laQL() && soOtCho() ? `<button class="okbox" id="bGoQl" style="width:100%;border:0;text-align:left;background:var(--amber50)"><div class="ck" style="background:#fff;color:var(--amber)">${I('clockp')}</div><div class="sp"><div class="b">${soOtCho()} đơn tăng ca chờ xác nhận</div><div class="small muted">Chạm để mở mục Quản lý</div></div>${I('right', 's')}</button>` : ''}
     ${lichSuHtml()}
     <div class="row xs muted" style="padding:0 6px 10px">${I('lock', 's')}<span>Hệ thống xác thực vị trí GPS kho. Bán kính cho phép: ≤ ${st.banKinh} m, sai số GPS ≤ ${st.saiSo} m.${NATIVE ? ' Chặn vị trí giả lập.' : ''}</span></div>`;
 }
@@ -488,6 +514,7 @@ function bindScan() {
   $('bCta').onclick = () => xacNhan(trongCa ? 'OUT' : 'IN');
   $('bAlt').onclick = () => xacNhan(trongCa ? 'IN' : 'OUT');
   $('bReload').onclick = () => { taiTrangThai(true); taiMe(null); };
+  if ($('bGoQl')) $('bGoQl').onclick = () => chonTab('ql');
   $('bLoc').onclick = () => {
     if (NATIVE && NATIVE.requestLocation) { try { NATIVE.requestLocation(); } catch (e) {} }
     else { best = null; startGps(true); }
@@ -820,77 +847,122 @@ const TT_OT = { 'Chờ duyệt': ['Chờ duyệt', 'line'], 'Đã duyệt': ['Đ
 
 function otGio() { const a = phut(fOt.from), b = phut(fOt.to); if (a < 0 || b < 0) return 0; const m = b > a ? b - a : b + 1440 - a; return Math.round(m / 60 * 100) / 100; }
 
+// Giờ chấm công của 1 ngày (để gợi ý giờ tăng ca): từ lượt chấm công + bảng công.
+function chamCongNgay(ngay) {
+  const c = caTuQuet(me ? me.quet : null)[ngay] || null, r = (me && me.ngayCong || []).find(x => x.ngay === ngay) || null;
+  const vao = (c && c.vao) || (r && r.vao) || '', ra = (c && c.ra) || (r && r.ra) || '';
+  return { vao, ra, coMat: !!(c && c.vao && !c.ra && ngay === todayIso()) };
+}
+
+// Gợi ý giờ: từ = hết ca chuẩn (giờ vào + số giờ ca), đến = giờ ra (hoặc bây giờ nếu còn trong ca).
+function goiYGioOt() {
+  if (fOt.touched) return;
+  const cc = chamCongNgay(fOt.date), gioCa = (me && me.cauHinh && me.cauHinh.gioCa) || 8;
+  if (!cc.vao) return;
+  const tu = phut(cc.vao) + gioCa * 60;
+  let den = cc.ra ? phut(cc.ra) : -1;
+  if (den < 0 && fOt.date === todayIso()) { const n = vnNow(); den = Math.floor((n.getHours() * 60 + n.getMinutes()) / 15) * 15; }
+  if (den < 0) return;
+  fOt.from = hm(tu);
+  fOt.to = hm(den);
+}
+
 function otHtml() {
   const q = me.quyOt || { gioKy: 0, hanThang: 40, gioNam: 0, hanNam: 200, nguoiDuyet: 'Quản lý kho', ky: me.kyHienTai || '' };
   const hn = todayIso();
   if (!fOt.date) { fOt.date = hn; if (parseIso(hn).getDay() === 0) fOt.type = 'NGHI_TUAN'; }
+  goiYGioOt();
   const pT = Math.min(100, Math.round(q.gioKy / q.hanThang * 100)), pN = Math.min(100, Math.round(q.gioNam / q.hanNam * 100));
   const l = me.ky === me.kyHienTai ? (me.luong || [])[0] : null;
-  const loai = LOAI_OT.find(x => x[0] === fOt.type) || LOAI_OT[0], gio = otGio();
+  const loai = LOAI_OT.find(x => x[0] === fOt.type) || LOAI_OT[0], gio = otGio(), cc = chamCongNgay(fOt.date);
+  const raPhut = phut(cc.ra), denPhut = phut(fOt.to);
+  const lech = cc.ra && denPhut >= 0 && raPhut >= 0 && ((denPhut - raPhut + 1440) % 1440) > 30 && ((denPhut - raPhut + 1440) % 1440) < 720;
   const quy = `<div class="card"><div class="row"><span class="green">${I('trend')}</span><h2 class="t sp">Quỹ Giờ Làm Thêm (OT)</h2><span class="chip">Kỳ T${esc(String(q.ky).slice(5))}/${esc(String(q.ky).slice(0, 4))}</span></div>
     <div class="stats3" style="margin-top:12px">
-      <div class="st"><div class="k" style="text-transform:none;letter-spacing:0;font-weight:500">Đã đăng ký kỳ này</div><div class="v" style="font-size:22px">${num(q.gioKy)} <small>/${q.hanThang}h</small></div>
+      <div class="st"><div class="k" style="text-transform:none;letter-spacing:0;font-weight:500">Đã tăng ca kỳ này</div><div class="v" style="font-size:22px">${num(q.gioKy)} <small>/${q.hanThang}h</small></div>
         <div class="bar thin" style="margin:6px 0 4px"><i style="width:${pT}%"></i></div><div class="s green">${pT}% định mức</div></div>
       <div class="st"><div class="k" style="text-transform:none;letter-spacing:0;font-weight:500">Hạn mức năm</div><div class="v" style="font-size:22px">${num(q.gioNam)} <small>/${q.hanNam}h</small></div>
         <div class="bar thin" style="margin:6px 0 4px"><i style="width:${pN}%"></i></div><div class="s">● ${pN < 80 ? 'An toàn' : 'Gần hạn mức'} (${pN}%)</div></div>
       <div class="st mint"><div class="k" style="text-transform:none;letter-spacing:0;font-weight:500">Tạm tính lương</div><div class="v" style="font-size:22px">${l && l.tienTangCa ? kShort(l.tienTangCa) : '0'}</div><div class="s">Hệ số x1.5–3.0</div><div class="s">${I('doc', 's')} Theo phiếu lương</div></div></div>
-    <div class="note" style="margin-top:10px">${I('shield', 's')}<span class="sp">Quy chế Kho Vận: Tối đa ${q.hanThang}h/tháng & ${q.hanNam}h/năm${q.choDuyet ? ` · ${num(q.choDuyet)}h đang chờ duyệt` : ''}</span></div></div>`;
-  const form = `<div class="row" style="margin:6px 2px 10px"><div class="tile dark" style="border-radius:10px;width:34px;height:34px">${I('clockp', 's')}</div><h2 class="t">Tạo Đơn Đăng Ký Tăng Ca (OT)</h2></div>
+    <div class="note" style="margin-top:10px">${I('shield', 's')}<span class="sp">Quy chế Kho Vận: Tối đa ${q.hanThang}h/tháng & ${q.hanNam}h/năm${q.choDuyet ? ` · ${num(q.choDuyet)}h đang chờ quản lý xác nhận` : ''}</span></div></div>`;
+  const form = `<div class="row" style="margin:6px 2px 4px"><div class="tile dark" style="border-radius:10px;width:34px;height:34px">${I('clockp', 's')}</div><h2 class="t">Tạo Đơn Tăng Ca</h2></div>
+    <div class="small muted" style="margin:0 4px 10px">Tạo đơn khi hôm nay có làm thêm giờ. Quản lý nhận đơn và xác nhận.</div>
     <div class="card"><div class="fl" style="margin-top:0"><span>Loại ca làm thêm <span class="rq">*</span></span><span class="small muted">Hệ số tính lương</span></div>
       <div class="opts">${LOAI_OT.map(x => `<button class="opt ${fOt.type === x[0] ? 'on' : ''}" data-ot="${x[0]}"><div class="a">${x[1]}</div><div class="b2">${x[2]}</div><span class="ck"></span></button>`).join('')}</div>
-      <div class="fl"><span>Ngày làm thêm <span class="rq">*</span></span></div>
-      <label class="fld row" style="padding:10px 12px">${I('cal')}<input type="date" id="oDate" value="${fOt.date}" min="${addDays(hn, -3)}" max="${addDays(hn, 14)}" style="flex:1">${fOt.date === hn ? '<span class="chip">Hôm nay</span>' : ''}</label>
-      <div class="fl"><span>Khung giờ đăng ký <span class="rq">*</span></span></div>
+      <div class="fl"><span>Ngày tăng ca <span class="rq">*</span></span></div>
+      <label class="fld row" style="padding:10px 12px">${I('cal')}<input type="date" id="oDate" value="${fOt.date}" min="${addDays(hn, -3)}" max="${hn}" style="flex:1">${fOt.date === hn ? '<span class="chip">Hôm nay</span>' : ''}</label>
+      <div class="sum" style="margin-top:8px">${I('finger', 's')}<span class="sp">Chấm công ngày ${dm(fOt.date)}: ${cc.vao ? `vào <b>${esc(cc.vao)}</b>` : '<span class="muted">chưa có giờ vào</span>'}${cc.ra ? ` – ra <b>${esc(cc.ra)}</b>` : cc.coMat ? ' – <span class="green">đang trong ca</span>' : cc.vao ? ' – <span class="muted">chưa có giờ ra</span>' : ''}</span></div>
+      <div class="fl"><span>Thời gian tăng ca <span class="rq">*</span></span>${cc.vao && !fOt.touched ? '<span class="xs muted">Đã gợi ý theo giờ chấm công</span>' : ''}</div>
       <div class="grid2"><label class="fld"><div class="k">Từ giờ (Bắt đầu)</div><input type="time" id="oFrom" value="${fOt.from}"></label>
         <label class="fld"><div class="k">Đến giờ (Kết thúc)</div><input type="time" id="oTo" value="${fOt.to}"></label></div>
       <div class="sum">${I('calc', 's')}<span class="sp">Tổng giờ OT: <b class="green">${num1(gio)} giờ</b>${phut(fOt.to) <= phut(fOt.from) && gio ? ' <span class="xs muted">(qua nửa đêm)</span>' : ''}</span>
         <span class="chip" style="background:#86D9B0;color:var(--g900)">Quy đổi: ${num1(gio * loai[3])} giờ chuẩn</span></div>
+      ${lech ? `<div class="note" style="background:var(--amber50);color:var(--amber);margin-top:8px">${I('info', 's')}<span>Giờ kết thúc tăng ca muộn hơn giờ ra chấm công (${esc(cc.ra)}). Quản lý sẽ đối chiếu khi xác nhận.</span></div>` : ''}
       <div class="fl"><span>Lý do tăng ca <span class="rq">*</span></span></div>
       <div class="pills">${LY_DO_OT.map(x => `<button data-rs="${x}" class="${fOt.reason === x ? 'on' : ''}">${x}</button>`).join('')}</div>
-      <div class="fld" style="margin-top:8px"><textarea id="oNote" rows="2" maxlength="250" placeholder="Ghi chú chi tiết công việc (vd: Đóng gói và bốc dỡ 2 container hàng...)">${esc(fOt.note)}</textarea></div>
-      <div class="fl"><span>Người phê duyệt trực tiếp</span></div>
+      ${fOt.reason === 'Khác' ? `<div class="fld" style="margin-top:8px"><input id="oReason" maxlength="120" placeholder="Nhập lý do" value="${esc(fOt.reasonText || '')}" style="font-size:16px;font-weight:500"></div>` : ''}
+      <div class="fl"><span>Công việc đã làm <span class="rq">*</span></span></div>
+      <div class="fld"><textarea id="oWork" rows="3" maxlength="500" placeholder="Ví dụ: Đóng gói và bốc dỡ 2 container hàng đông cho đơn SCF, kiểm đếm 120 thùng...">${esc(fOt.work || '')}</textarea></div>
+      <div class="fl"><span>Người xác nhận</span></div>
       <div class="li hl" style="margin:0"><div class="ava" style="width:40px;height:40px;font-weight:700">${esc(initials(q.nguoiDuyet).toUpperCase() || 'QL')}</div>
-        <div class="sp"><div class="b row" style="gap:6px">${esc(q.nguoiDuyet)} <span class="green">${I('badge', 's')}</span></div><div class="small muted">${esc(store.get('fsc_app_team') || 'Kho FSC')}</div></div><span class="chip">Tự động gắn</span></div>
-      <div class="note" style="margin-top:12px">${I('info', 's')}<span><b>Lưu ý:</b> Đăng ký OT trước khi làm (chậm nhất 3 ngày sau). Quản lý duyệt trên bảng tính; bảng chấm công ghi nhận giờ tăng ca sau khi được duyệt.</span></div>
+        <div class="sp"><div class="b row" style="gap:6px">${esc(q.nguoiDuyet)} <span class="green">${I('badge', 's')}</span></div><div class="small muted">Quản lý kho nhận đơn trong app</div></div><span class="chip">Tự động gửi</span></div>
+      <div class="note" style="margin-top:12px">${I('info', 's')}<span><b>Lưu ý:</b> Tạo đơn trong ngày làm thêm (chậm nhất 3 ngày sau). Quản lý đối chiếu giờ chấm công rồi xác nhận; bảng công tính giờ tăng ca sau khi được xác nhận.</span></div>
       <div class="err" id="oErr"></div>
-      <button class="btn dark" id="bOt">GỬI ĐĂNG KÝ TĂNG CA ${I('send')}</button></div>`;
+      <button class="btn dark" id="bOt">GỬI ĐƠN TĂNG CA ${I('send')}</button></div>`;
   const ds = me.tangCa || [], hien = otAll ? ds : ds.slice(0, 3);
-  const list = `<div class="row" style="margin:10px 2px"><span class="green">${I('refresh')}</span><h2 class="t sp">Đơn OT Gần Đây</h2>${ds.length > 3 ? `<button class="lnk" id="bOtAll">${otAll ? 'Thu gọn' : `Xem tất cả (${ds.length})`}</button>` : ''}</div>
-    ${hien.length ? hien.map(o => {
-      const tt = TT_OT[o.trangThai] || [o.trangThai, 'gray'], sun = parseIso(o.ngay).getDay() === 0;
-      let ft = '';
-      if (o.trangThai === 'Chờ duyệt') ft = `<div class="ft"><span>Người duyệt: <b>${esc(q.nguoiDuyet)}</b> (Gửi lúc ${esc(o.guiLuc)})</span><button class="lnk red" data-cot="${esc(o.id)}" style="padding:0">Hủy đơn</button></div>`;
-      else if (o.trangThai === 'Đã duyệt') ft = `<div class="ft" style="display:block">${o.lyDo ? `<div>Lý do: <b>${esc(o.lyDo)}</b></div>` : ''}<div class="green">${I('dcheck', 's')} Duyệt bởi ${esc(o.nguoiDuyet || 'quản lý')}${o.duyetLuc ? ' (' + esc(o.duyetLuc) + ')' : ''}</div></div>`;
-      else if (o.trangThai === 'Đã chốt công') ft = `<div class="ft"><span>Tích lũy vào <b>Phiếu lương kỳ ${esc(kyCuaNgay(o.ngay).slice(5))}</b></span><span class="green b">+${num1(o.quyDoi)}h chuẩn</span></div>`;
-      else if (o.trangThai === 'Từ chối') ft = `<div class="ft"><span class="red">Từ chối${o.ghiChuDuyet ? ': ' + esc(o.ghiChuDuyet) : ''}</span><span>${esc(o.nguoiDuyet)}</span></div>`;
-      return `<div class="card" style="padding:12px"><div class="row"><div class="dblk ${sun ? 'sun' : ''}"><span class="w">${thuN(o.ngay)}</span><span class="n">${o.ngay.slice(8)}</span></div>
-        <div class="sp"><div class="b" style="font-size:16.5px">${esc(o.tu)} – ${esc(o.den)} (${num1(o.soGio)} giờ)</div><div class="small muted">${esc(o.loaiTen)} • Hệ số ${Math.round(o.heSo * 100)}%${o.heSo !== 1.5 ? ` (Quy đổi: ${num1(o.quyDoi)}h)` : ''}</div></div>
-        <span class="chip ${tt[1]}">${o.trangThai === 'Đã duyệt' ? I('check', 's') : '<span class="dot"></span>'} ${esc(tt[0])}</span></div>${ft}</div>`;
-    }).join('') : '<div class="card muted small">Chưa có đơn tăng ca.</div>'}`;
+  const list = `<div class="row" style="margin:10px 2px"><span class="green">${I('refresh')}</span><h2 class="t sp">Đơn Tăng Ca Gần Đây</h2>${ds.length > 3 ? `<button class="lnk" id="bOtAll">${otAll ? 'Thu gọn' : `Xem tất cả (${ds.length})`}</button>` : ''}</div>
+    ${hien.length ? hien.map(o => otCardHtml(o, q.nguoiDuyet, false)).join('') : '<div class="card muted small">Chưa có đơn tăng ca.</div>'}`;
   return canhBaoMayChu() + quy + form + list;
 }
+
+function otCardHtml(o, nguoiDuyet, laQL) {
+  const tt = TT_OT[o.trangThai] || [o.trangThai, 'gray'], sun = parseIso(o.ngay).getDay() === 0;
+  let ft = '';
+  if (o.trangThai === 'Chờ duyệt') ft = laQL ? '' : `<div class="ft"><span>Chờ <b>${esc(nguoiDuyet)}</b> xác nhận (gửi lúc ${esc(o.guiLuc)})</span><button class="lnk red" data-cot="${esc(o.id)}" style="padding:0">Hủy đơn</button></div>`;
+  else if (o.trangThai === 'Đã duyệt') ft = `<div class="ft" style="display:block"><div class="green">${I('dcheck', 's')} Xác nhận bởi ${esc(o.nguoiDuyet || 'quản lý')}${o.duyetLuc ? ' (' + esc(o.duyetLuc) + ')' : ''}</div>${o.ghiChuDuyet ? `<div>Ghi chú: ${esc(o.ghiChuDuyet)}</div>` : ''}</div>`;
+  else if (o.trangThai === 'Đã chốt công') ft = `<div class="ft"><span>Tích lũy vào <b>Phiếu lương kỳ ${esc(kyCuaNgay(o.ngay).slice(5))}</b></span><span class="green b">+${num1(o.quyDoi)}h chuẩn</span></div>`;
+  else if (o.trangThai === 'Từ chối') ft = `<div class="ft" style="display:block"><div class="red">Từ chối${o.nguoiDuyet ? ' bởi ' + esc(o.nguoiDuyet) : ''}${o.duyetLuc ? ' (' + esc(o.duyetLuc) + ')' : ''}</div>${o.ghiChuDuyet ? `<div>Lý do: ${esc(o.ghiChuDuyet)}</div>` : ''}</div>`;
+  const nguoi = laQL ? `<div class="row" style="margin-bottom:10px"><div class="ava" style="width:38px;height:38px;font-size:14px;font-weight:700">${esc(initials(o.ten).toUpperCase())}</div>
+      <div class="sp"><div class="b">${esc(o.ten)}</div><div class="xs muted">${esc(o.code)}${o.team ? ' • ' + esc(o.team) : ''}</div></div><span class="chip ${tt[1]}">${esc(tt[0])}</span></div>` : '';
+  const cc = laQL ? `<div class="sum" style="margin-top:8px">${I('finger', 's')}<span class="sp">Chấm công: ${o.vao ? 'vào <b>' + esc(o.vao) + '</b>' : '<span class="red">không có giờ vào</span>'}${o.ra ? ' – ra <b>' + esc(o.ra) + '</b>' : o.vao ? ' – <span class="amber">chưa có giờ ra</span>' : ''}${o.gioCong ? ` · ${num1(o.gioCong)} giờ có mặt` : ''}</span></div>` : '';
+  const chiTiet = (o.lyDo || o.congViec) ? `<div class="small" style="margin-top:8px;color:var(--ink2)">${o.lyDo ? `<div>Lý do: <b>${esc(o.lyDo)}</b></div>` : ''}${o.congViec ? `<div>Công việc: ${esc(o.congViec)}</div>` : ''}</div>` : '';
+  const nut = laQL && o.trangThai === 'Chờ duyệt' ? `<div class="grid2" style="margin-top:10px"><button class="btn line" style="margin:0;padding:12px" data-rej="${esc(o.id)}">${I('calx', 's')} Từ chối</button>
+      <button class="btn pri" style="margin:0;padding:12px" data-apr="${esc(o.id)}">${I('check', 's')} Xác nhận</button></div><div class="xs muted" style="margin-top:6px">Gửi lúc ${esc(o.guiLuc)}</div>` : '';
+  return `<div class="card" style="padding:12px">${nguoi}<div class="row"><div class="dblk ${sun ? 'sun' : ''}"><span class="w">${thuN(o.ngay)}</span><span class="n">${o.ngay.slice(8)}</span></div>
+      <div class="sp"><div class="b" style="font-size:16.5px">${esc(o.tu)} – ${esc(o.den)} (${num1(o.soGio)} giờ)</div><div class="small muted">${esc(o.loaiTen)} • Hệ số ${Math.round(o.heSo * 100)}% • Quy đổi ${num1(o.quyDoi)}h</div></div>
+      ${laQL ? '' : `<span class="chip ${tt[1]}">${o.trangThai === 'Đã duyệt' ? I('check', 's') : '<span class="dot"></span>'} ${esc(tt[0])}</span>`}</div>${cc}${chiTiet}${nut}${ft}</div>`;
+}
+
 function kyCuaNgay(iso) { let y = +iso.slice(0, 4), m = +iso.slice(5, 7); if (+iso.slice(8, 10) >= 26) { m++; if (m > 12) { m = 1; y++; } } return `${y}-${pad(m)}`; }
 
 function bindOt() {
-  const luu = () => { fOt.note = $('oNote').value; fOt.from = $('oFrom').value || fOt.from; fOt.to = $('oTo').value || fOt.to; fOt.date = $('oDate').value || fOt.date; };
+  const luu = () => {
+    fOt.work = $('oWork').value; if ($('oReason')) fOt.reasonText = $('oReason').value;
+    const f = $('oFrom').value, t = $('oTo').value;
+    if ((f && f !== fOt.from) || (t && t !== fOt.to)) fOt.touched = true;
+    fOt.from = f || fOt.from; fOt.to = t || fOt.to; fOt.date = $('oDate').value || fOt.date;
+  };
   document.querySelectorAll('[data-ot]').forEach(b => b.onclick = () => { luu(); fOt.type = b.dataset.ot; render(); });
   document.querySelectorAll('[data-rs]').forEach(b => b.onclick = () => { luu(); fOt.reason = b.dataset.rs; render(); });
-  ['oDate', 'oFrom', 'oTo'].forEach(id => $(id).onchange = () => { luu(); if (id === 'oDate' && parseIso(fOt.date).getDay() === 0 && fOt.type === 'THUONG') fOt.type = 'NGHI_TUAN'; render(); });
+  $('oDate').onchange = () => { luu(); fOt.touched = false; if (parseIso(fOt.date).getDay() === 0 && fOt.type === 'THUONG') fOt.type = 'NGHI_TUAN'; render(); };
+  ['oFrom', 'oTo'].forEach(id => $(id).onchange = () => { luu(); render(); });
   if ($('bOtAll')) $('bOtAll').onclick = () => { otAll = !otAll; render(); };
   $('bOt').onclick = async () => {
     luu();
     const gio = otGio();
-    if (!gio) { $('oErr').textContent = 'Nhập giờ bắt đầu và kết thúc.'; return; }
-    const lyDo = [fOt.reason === 'Khác' ? '' : fOt.reason, fOt.note.trim()].filter(Boolean).join(' – ');
+    if (!gio) { $('oErr').textContent = 'Nhập giờ bắt đầu và kết thúc tăng ca.'; return; }
+    const lyDo = fOt.reason === 'Khác' ? (fOt.reasonText || '').trim() : fOt.reason;
     if (!lyDo) { $('oErr').textContent = 'Chọn hoặc nhập lý do tăng ca.'; return; }
+    const work = (fOt.work || '').trim();
+    if (work.length < 3) { $('oErr').textContent = 'Nhập công việc đã làm trong giờ tăng ca.'; return; }
     const loai = LOAI_OT.find(x => x[0] === fOt.type);
-    if (!await dialog('Gửi đăng ký tăng ca', `${loai[1]} · ${dmy(fOt.date)}\n${fOt.from} – ${fOt.to} (${num1(gio)} giờ, quy đổi ${num1(gio * loai[3])} giờ chuẩn)\nLý do: ${lyDo}`, 'Gửi đơn', 'Hủy')) return;
+    if (!await dialog('Gửi đơn tăng ca', `${loai[1]} · ${dmy(fOt.date)}\n${fOt.from} – ${fOt.to} (${num1(gio)} giờ, quy đổi ${num1(gio * loai[3])} giờ chuẩn)\nLý do: ${lyDo}\nCông việc: ${work}`, 'Gửi đơn', 'Hủy')) return;
     const b = $('bOt'); b.disabled = true; b.textContent = 'Đang gửi…';
     try {
-      const r = await api('ot', { type: fOt.type, date: fOt.date, from: fOt.from, to: fOt.to, note: lyDo });
-      me.tangCa = r.tangCa; me.quyOt = r.quyOt; fOt.note = '';
-      render(); toast('Đã gửi đăng ký tăng ca, chờ quản lý duyệt.');
-    } catch (e) { if (authFail(e)) return; b.disabled = false; b.innerHTML = 'GỬI ĐĂNG KÝ TĂNG CA ' + I('send'); $('oErr').textContent = e.message; }
+      const r = await api('ot', { type: fOt.type, date: fOt.date, from: fOt.from, to: fOt.to, note: lyDo, work });
+      me.tangCa = r.tangCa; me.quyOt = r.quyOt; fOt.work = ''; fOt.reasonText = ''; fOt.touched = false;
+      render(); toast('Đã gửi đơn tăng ca cho quản lý xác nhận.');
+    } catch (e) { if (authFail(e)) return; b.disabled = false; b.innerHTML = 'GỬI ĐƠN TĂNG CA ' + I('send'); $('oErr').textContent = e.message; }
   };
   document.querySelectorAll('[data-cot]').forEach(b => b.onclick = async () => {
     if (!await dialog('', 'Hủy đơn tăng ca này?', 'Hủy đơn', 'Không')) return;
@@ -898,6 +970,107 @@ function bindOt() {
     try { const r = await api('cancelOt', { id: b.dataset.cot }); me.tangCa = r.tangCa; me.quyOt = r.quyOt; render(); toast('Đã hủy đơn tăng ca.'); }
     catch (e) { if (authFail(e)) return; b.disabled = false; dialog('', e.message); }
   });
+}
+
+/* ======================= TAB QUẢN LÝ ======================= */
+let mgr = { seg: 'ot', loc: 'cho', ot: null, otErr: '', pres: null, presErr: '', tai: false };
+let presTimer = null;
+
+async function taiMgrOt(baoLoi) {
+  try { const r = await api('mgrOt'); mgr.ot = r.danhSach || []; mgr.otErr = ''; }
+  catch (e) { if (authFail(e)) return; mgr.otErr = /Không rõ thao tác/.test(e.message) ? 'Máy chủ chưa cập nhật bản mới (mục Quản lý). Triển khai phiên bản mới FSC_WebApi.gs.' : e.message; if (e.code === 'role') { store.set('fsc_app_ql', ''); dungNav(); } if (baoLoi) toast(mgr.otErr); }
+  if (tab === 'ql' || tab === 'scan') render();
+}
+async function taiMgrPres(baoLoi) {
+  try { mgr.pres = await api('mgrPresence'); mgr.presErr = ''; }
+  catch (e) { if (authFail(e)) return; mgr.presErr = /Không rõ thao tác/.test(e.message) ? 'Máy chủ chưa cập nhật bản mới (mục Quản lý). Triển khai phiên bản mới FSC_WebApi.gs.' : e.message; if (baoLoi) toast(mgr.presErr); }
+  if (tab === 'ql') render();
+}
+function soOtCho() { return (mgr.ot || []).filter(o => o.trangThai === 'Chờ duyệt').length; }
+
+function qlHtml() {
+  const cho = soOtCho(), coMat = mgr.pres ? mgr.pres.coMat.length : null;
+  const seg = `<div class="seg"><button data-qs="ot" class="${mgr.seg === 'ot' ? 'on' : ''}">${I('clockp', 's')} Duyệt tăng ca ${cho ? `<span class="chip">${cho}</span>` : ''}</button>
+    <button data-qs="pres" class="${mgr.seg === 'pres' ? 'on' : ''}">${I('wh', 's')} Có mặt tại kho ${coMat != null ? `<span class="chip">${coMat}</span>` : ''}</button></div>`;
+  return `<div class="row" style="margin:2px 4px 12px"><div class="tile dark" style="border-radius:12px">${I('shield')}</div><div class="sp"><h2 class="t">Quản lý kho</h2><div class="small muted">${esc(store.get('fsc_app_name'))} • Quyền quản lý</div></div></div>`
+    + seg + (mgr.seg === 'pres' ? presHtml() : duyetHtml());
+}
+
+function duyetHtml() {
+  if (mgr.otErr && !mgr.ot) return `<div class="card red">${esc(mgr.otErr)}</div>`;
+  if (!mgr.ot) return '<div class="card muted">Đang tải đơn tăng ca…</div>';
+  const cho = mgr.ot.filter(o => o.trangThai === 'Chờ duyệt'), xl = mgr.ot.filter(o => o.trangThai !== 'Chờ duyệt');
+  const gioCho = cho.reduce((s, o) => s + (Number(o.soGio) || 0), 0);
+  const ds = mgr.loc === 'cho' ? cho : xl;
+  return `<div class="card"><div class="stats3">
+      <div class="st dark"><div class="k" style="text-transform:none;letter-spacing:0">Chờ xác nhận</div><div class="v">${cho.length} <small>đơn</small></div><div class="s">${num1(gioCho)} giờ tăng ca</div></div>
+      <div class="st"><div class="k" style="text-transform:none;letter-spacing:0">Đã xác nhận</div><div class="v">${xl.filter(o => o.trangThai === 'Đã duyệt' || o.trangThai === 'Đã chốt công').length} <small>đơn</small></div><div class="s">10 ngày gần đây</div></div>
+      <div class="st"><div class="k" style="text-transform:none;letter-spacing:0">Từ chối</div><div class="v">${xl.filter(o => o.trangThai === 'Từ chối').length} <small>đơn</small></div><div class="s">10 ngày gần đây</div></div></div></div>
+    <div class="row" style="margin:0 2px 10px"><div class="pills sp"><button data-ql="cho" class="${mgr.loc === 'cho' ? 'on' : ''}">Chờ xác nhận (${cho.length})</button><button data-ql="xl" class="${mgr.loc === 'xl' ? 'on' : ''}">Đã xử lý (${xl.length})</button></div>
+      <button class="lnk" id="bQlReload">${I('refresh', 's')}</button></div>
+    ${mgr.loc === 'cho' && cho.length > 1 ? `<button class="btn pri" id="bAprAll" style="margin:0 0 12px">${I('dcheck', 's')} Xác nhận tất cả ${cho.length} đơn</button>` : ''}
+    ${ds.length ? ds.map(o => otCardHtml(o, '', true)).join('') : `<div class="card muted small">${mgr.loc === 'cho' ? 'Không có đơn tăng ca chờ xác nhận.' : 'Chưa có đơn đã xử lý trong 10 ngày.'}</div>`}`;
+}
+
+function thoiLuong(p) { p = Math.max(0, p || 0); const h = Math.floor(p / 60), m = p % 60; return h ? `${h} giờ ${pad(m)} phút` : `${m} phút`; }
+
+function presHtml() {
+  if (mgr.presErr && !mgr.pres) return `<div class="card red">${esc(mgr.presErr)}</div>`;
+  if (!mgr.pres) return '<div class="card muted">Đang tải nhân sự tại kho…</div>';
+  const p = mgr.pres, at = new Date(Date.parse(p.at) + (new Date().getTimezoneOffset() + 420) * 60000);
+  const nhom = {};
+  p.coMat.forEach(o => { (nhom[o.team] = nhom[o.team] || []).push(o); });
+  const danhSach = (arr, fn) => arr.map(o => `<div class="li"><div class="ava" style="width:36px;height:36px;font-size:13px;font-weight:700;${fn ? '' : 'background:#8C96A0'}">${esc(initials(o.name).toUpperCase())}</div>
+      <div class="sp"><div class="ti">${esc(o.name)}</div><div class="su">${esc(o.code)} • ${esc(o.team)}</div></div><div class="rt">${fn ? fn(o) : ''}</div></div>`).join('');
+  const phan = (id, ten, arr, fn, mo) => `<div class="card"><button class="row" data-tog="${id}" style="width:100%;background:none;border:0;padding:0;text-align:left"><h3 class="t sp">${ten} (${arr.length})</h3>${I(mo ? 'down' : 'right', 's')}</button>
+      ${mo ? (arr.length ? danhSach(arr, fn) : '<div class="small muted" style="padding-top:8px">Không có.</div>') : ''}</div>`;
+  mgr.mo = mgr.mo || { daRa: false, chuaCham: true, nghi: false };
+  return `<div class="hero"><div class="row"><span class="chip"><span class="dot"></span>Trực tiếp</span><span class="sp"></span><span class="small">Cập nhật ${pad(at.getHours())}:${pad(at.getMinutes())}</span></div>
+      <div class="k">ĐANG CÓ MẶT TẠI KHO</div><div class="v">${p.coMat.length}<small style="text-decoration:none;font-size:18px;font-weight:600;opacity:.8"> / ${p.tong} nhân sự đang làm</small></div>
+      <div class="f"><span>Đã xác nhận giờ vào, chưa xác nhận giờ ra</span><b id="bPresReload" style="cursor:pointer">${I('refresh', 's')} Tải lại</b></div></div>
+    <div class="card"><div class="stats3">
+      <div class="st"><div class="k" style="text-transform:none;letter-spacing:0">Đã ra ca</div><div class="v">${p.daRa.length}</div><div class="s">trong 16 giờ qua</div></div>
+      <div class="st"><div class="k" style="text-transform:none;letter-spacing:0">Chưa chấm công</div><div class="v ${p.chuaCham.length ? 'amber' : ''}">${p.chuaCham.length}</div><div class="s">hôm nay</div></div>
+      <div class="st"><div class="k" style="text-transform:none;letter-spacing:0">Nghỉ có đơn</div><div class="v">${p.nghi.length}</div><div class="s">hôm nay</div></div></div>
+      ${Object.keys(p.theoTo || {}).length ? `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:12px">${Object.keys(p.theoTo).map(t => `<span class="chip line">${esc(t)}: <b>${p.theoTo[t]}</b></span>`).join('')}</div>` : ''}</div>
+    ${Object.keys(nhom).length ? Object.keys(nhom).sort().map(t => `<div class="card"><div class="row"><span class="green">${I('wh', 's')}</span><h3 class="t sp">${esc(t)}</h3><span class="chip">${nhom[t].length} người</span></div>
+      ${danhSach(nhom[t], o => `<div class="v">${esc(o.vao)}</div><div class="w">${thoiLuong(o.phut)}${o.ngayVao !== p.homNay ? ' · từ ' + dm(o.ngayVao) : ''}</div>`)}</div>`).join('')
+      : '<div class="card muted">Chưa có ai đang có mặt tại kho.</div>'}
+    ${phan('chuaCham', 'Chưa chấm công hôm nay', p.chuaCham, o => `<div class="w">${o.cuoi ? 'Lần cuối ' + esc(o.cuoi) : 'Chưa có lượt nào'}</div>`, mgr.mo.chuaCham)}
+    ${phan('daRa', 'Đã ra ca', p.daRa, o => `<div class="v">${esc(o.vao)} – ${esc(o.ra)}</div><div class="w">${thoiLuong(o.phut)}</div>`, mgr.mo.daRa)}
+    ${phan('nghi', 'Nghỉ có đơn hôm nay', p.nghi, o => `<div class="w">${esc(o.loaiNghi)}</div>`, mgr.mo.nghi)}
+    <div class="xs muted" style="text-align:center">Tính theo xác nhận giờ vào / giờ ra trên app. Quên xác nhận giờ ra thì vẫn tính là có mặt đến 16 giờ sau giờ vào.</div>`;
+}
+
+function bindQl() {
+  document.querySelectorAll('[data-qs]').forEach(b => b.onclick = () => { mgr.seg = b.dataset.qs; if (mgr.seg === 'pres') taiMgrPres(); render(); });
+  document.querySelectorAll('[data-ql]').forEach(b => b.onclick = () => { mgr.loc = b.dataset.ql; render(); });
+  document.querySelectorAll('[data-tog]').forEach(b => b.onclick = () => { mgr.mo[b.dataset.tog] = !mgr.mo[b.dataset.tog]; render(); });
+  if ($('bQlReload')) $('bQlReload').onclick = () => { taiMgrOt(true); toast('Đang tải lại…'); };
+  if ($('bPresReload')) $('bPresReload').onclick = () => { taiMgrPres(true); toast('Đang tải lại…'); };
+  const xuLy = async (ids, decision, note) => {
+    try {
+      const r = await api('approveOt', { ids, decision, note });
+      mgr.ot = r.danhSach || mgr.ot; render();
+      toast((decision === 'APPROVE' ? 'Đã xác nhận ' : 'Đã từ chối ') + r.soDon + ' đơn tăng ca.' + (r.boQua ? ` ${r.boQua} đơn đã được xử lý trước đó.` : ''));
+    } catch (e) { if (authFail(e)) return; dialog('Chưa xử lý được', e.message); taiMgrOt(); }
+  };
+  document.querySelectorAll('[data-apr]').forEach(b => b.onclick = () => { b.disabled = true; xuLy([b.dataset.apr], 'APPROVE', ''); });
+  document.querySelectorAll('[data-rej]').forEach(b => b.onclick = () => {
+    sheet(`<h3 class="t">Từ chối đơn tăng ca</h3><p class="small">Nhân viên sẽ thấy lý do này trong app.</p>
+      <div class="fld"><textarea id="rjNote" rows="3" maxlength="300" placeholder="Ví dụ: Không có trong kế hoạch tăng ca, giờ ra chấm công 17:25..."></textarea></div>
+      <div class="err" id="rjErr"></div><div class="acts"><button id="rjNo">Đóng</button><button class="pri" id="rjOk" style="background:var(--red)">Từ chối</button></div>`, () => {
+      $('rjNo').onclick = closeSheet;
+      $('rjOk').onclick = () => { const n = $('rjNote').value.trim(); if (!n) { $('rjErr').textContent = 'Nhập lý do từ chối.'; return; } closeSheet(); xuLy([b.dataset.rej], 'REJECT', n); };
+    });
+  });
+  if ($('bAprAll')) $('bAprAll').onclick = async () => {
+    const cho = mgr.ot.filter(o => o.trangThai === 'Chờ duyệt');
+    if (!await dialog('Xác nhận tất cả', `Xác nhận ${cho.length} đơn tăng ca (${num1(cho.reduce((s, o) => s + o.soGio, 0))} giờ)?`, 'Xác nhận', 'Hủy')) return;
+    xuLy(cho.map(o => o.id), 'APPROVE', '');
+  };
+  clearInterval(presTimer);
+  if (mgr.seg === 'pres') presTimer = setInterval(() => { if (tab === 'ql' && mgr.seg === 'pres' && !$('modal').innerHTML) taiMgrPres(); else clearInterval(presTimer); }, 60000);
 }
 
 /* ======================= TAB CÁ NHÂN ======================= */
@@ -950,8 +1123,9 @@ function bindMe() {
 
 /* ---------------- Thông báo (chuông) ---------------- */
 function dsThongBao() {
-  if (!me) return [];
   const out = [];
+  if (laQL() && soOtCho()) { const cho = (mgr.ot || []).filter(o => o.trangThai === 'Chờ duyệt'); out.push({ k: 'qlot|' + cho.map(o => o.id).join(','), t: `Có ${cho.length} đơn tăng ca chờ bạn xác nhận`, ic: 'shield', tab: 'ql' }); }
+  if (!me) return out;
   (me.tangCa || []).forEach(o => { if (o.trangThai === 'Đã duyệt' || o.trangThai === 'Từ chối') out.push({ k: 'ot|' + o.id + '|' + o.trangThai, t: `Đơn tăng ca ${dm(o.ngay)} (${o.tu}–${o.den}) ${o.trangThai === 'Đã duyệt' ? 'đã được duyệt' : 'bị từ chối'}`, ic: 'clockp', tab: 'ot' }); });
   (me.nghi || []).forEach(n => { if (n.trangThai === 'Đã duyệt' || n.trangThai === 'Từ chối') out.push({ k: 'np|' + n.id + '|' + n.trangThai, t: `Đơn ${n.loaiTen.toLowerCase()} ${dm(n.tu)} ${n.trangThai === 'Đã duyệt' ? 'đã được duyệt' : 'bị từ chối'}`, ic: 'calx', tab: 'nghi' }); });
   (me.phanHoi || []).forEach(p => { if (p.traLoi) out.push({ k: 'ph|' + p.id + '|' + p.traLoi.length, t: `Quản lý đã trả lời khiếu nại ${p.loai.toLowerCase()}: ${p.traLoi.slice(0, 80)}`, ic: 'msg', tab: 'me' }); });
@@ -975,7 +1149,7 @@ function showThongBao() {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && store.get('fsc_app_token') && !$('nav').hidden) { startGps(true); taiTrangThai(false); taiMe(null); }
 });
-window.fscOnResume = () => { if (store.get('fsc_app_token') && !$('nav').hidden) { startGps(true); taiTrangThai(false); taiMe(null); } };
+window.fscOnResume = () => { if (store.get('fsc_app_token') && !$('nav').hidden) { startGps(true); taiTrangThai(false); taiMe(null); if (laQL()) { taiMgrOt(); if (tab === 'ql' && mgr.seg === 'pres') taiMgrPres(); } } };
 (function start() {
   // App Android 1.x đã đăng nhập: dùng lại phiên cũ (cùng Device ID) để khỏi đăng nhập lại.
   if (!store.get('fsc_app_token') && NATIVE && NATIVE.oldSession) {

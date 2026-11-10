@@ -232,3 +232,9 @@ nav button svg.i { width: 25px; height: 25px; stroke-width: 1.7; }
 @media (min-width: 400px) { .seg button .i { display: inline-block; } }
 .req .row b, .card .row b { white-space: nowrap; }
 .shift .t2 { font-size: 13.5px; font-weight: 600; }
+
+nav button { position: relative; }
+nav .nbadge { position: absolute; top: 4px; left: 54%; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #E53935; color: #fff; font-size: 11px; line-height: 18px; font-weight: 700; }
+nav.six button { font-size: 11.5px; }
+nav.six button svg.i { width: 23px; height: 23px; }
+.amber { color: var(--amber); }
