@@ -46,8 +46,8 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: app-v1.0.${{ github.run_number }}
-          name: FSC Chấm Công 1.0.${{ github.run_number }}
+          tag_name: app-v2.0.${{ github.run_number }}
+          name: FSC Chấm Công 2.0.${{ github.run_number }}
           body: |
             App chấm công FSC (Android 8 trở lên). Xác nhận giờ vào / giờ ra khi ở trong vùng GPS của kho, không quét mã vạch.
             Tải file FSC-ChamCong.apk bên dưới để cài.
