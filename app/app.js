@@ -167,7 +167,7 @@ const laQL = () => store.get('fsc_app_ql') === '1';
 function showInstall() {
   $('nav').hidden = true;
   $('app').innerHTML = `<div class="page plain login wrap">
-    <h1>HR FSC</h1><p class="muted">Cài lên màn hình chính để dùng như app</p>
+    <img src="logo.png" alt="" class="brand"><h1>HR FSC</h1><p class="muted">Cài lên màn hình chính để dùng như app</p>
     <div class="card"><ol style="padding-left:20px;line-height:1.9;margin:0">
       <li>Bấm nút <b>Chia sẻ</b> ⬆︎ ở thanh dưới của Safari.</li>
       <li>Chọn <b>Thêm vào MH chính</b> (Add to Home Screen), bấm <b>Thêm</b>.</li>
@@ -183,7 +183,7 @@ function showLogin(msg) {
   stopGps();
   $('nav').hidden = true;
   $('app').innerHTML = `<div class="page plain login wrap">
-    <h1>HR FSC</h1><p class="muted">Chấm công · Bảng công · Nghỉ phép · Tăng ca</p>
+    <img src="logo.png" alt="" class="brand"><h1>HR FSC</h1><p class="muted">Chấm công · Bảng công · Nghỉ phép · Tăng ca</p>
     <div class="card" style="margin-top:20px">
       <div class="fl">Mã nhân viên</div>
       <input class="inp" id="iCode" autocapitalize="characters" autocomplete="username" maxlength="20" placeholder="Ví dụ F018" value="${esc(store.get('fsc_app_code'))}">

@@ -238,3 +238,5 @@ nav .nbadge { position: absolute; top: 4px; left: 54%; min-width: 18px; height: 
 nav.six button { font-size: 11.5px; }
 nav.six button svg.i { width: 23px; height: 23px; }
 .amber { color: var(--amber); }
+
+.login .brand { display: block; width: 92px; height: auto; margin: 26px 0 -14px; }
