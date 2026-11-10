@@ -2,7 +2,7 @@
  * Giao diện theo "Mẫu HR FSC" (10/11/2026): Chấm công · Bảng công · Nghỉ phép · Tăng ca · Cá nhân.
  * Máy chủ: FSC_WebApi.gs (Apps Script). Trong app Android có cầu nối window.FSCNative (vị trí gốc, phát hiện vị trí giả, Device ID, in). */
 'use strict';
-const API_URL = 'https://script.google.com/macros/s/AKfycbwPZitbwnMuiqy4u0_2gQQJR57l03DPp50CYgab-d_RjQYavIznZyz_8P25tC86cGd-/exec';
+let API_URL = 'https://script.google.com/macros/s/AKfycbxgsgJUvlavwvEQot0pnZDU5pAaT1A3o5zeLjoP7hiPdLCadAQ99X2HmldTpwvEWAgG/exec';
 const VERSION = '2.0';
 const NATIVE = window.FSCNative || null;
 const VI_TRI_CU_MS = 60000;
@@ -1151,7 +1151,16 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && store.get('fsc_app_token') && !$('nav').hidden) { startGps(true); taiTrangThai(false); taiMe(null); }
 });
 window.fscOnResume = () => { if (store.get('fsc_app_token') && !$('nav').hidden) { startGps(true); taiTrangThai(false); taiMe(null); if (laQL()) { taiMgrOt(); if (tab === 'ql' && mgr.seg === 'pres') taiMgrPres(); } } };
-(function start() {
+// Link máy chủ đọc từ config.json (sửa 1 chỗ khi Apps Script đổi link triển khai); lỗi thì dùng link sẵn trong code.
+async function napCauHinh() {
+  try {
+    const r = await fetch('config.json?t=' + Date.now(), { cache: 'no-store' });
+    const c = await r.json();
+    if (c && /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(c.apiUrl || '')) API_URL = c.apiUrl;
+  } catch (e) {}
+}
+(async function start() {
+  await napCauHinh();
   // App Android 1.x đã đăng nhập: dùng lại phiên cũ (cùng Device ID) để khỏi đăng nhập lại.
   if (!store.get('fsc_app_token') && NATIVE && NATIVE.oldSession) {
     try { const o = JSON.parse(NATIVE.oldSession() || 'null'); if (o && o.token) { store.set('fsc_app_token', o.token); saveProfile({ code: o.code, name: o.name, team: o.team }); } } catch (e) {}
