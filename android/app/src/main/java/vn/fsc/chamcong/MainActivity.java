@@ -350,7 +350,7 @@ public class MainActivity extends Activity implements LocationListener {
             ui.post(() -> {
                 try {
                     PrintManager pm = (PrintManager) getSystemService(Context.PRINT_SERVICE);
-                    String t = title == null || title.isEmpty() ? "Phieu luong FSC" : title;
+                    String t = title == null || title.isEmpty() ? "Phieu luong HR FSC" : title;
                     pm.print(t, web.createPrintDocumentAdapter(t), null);
                 } catch (Exception ignored) { }
             });

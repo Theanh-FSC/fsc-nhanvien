@@ -1,4 +1,4 @@
-/* FSC Chấm Công – web-app (iPhone, trình duyệt) và giao diện bên trong app Android 2.x.
+/* HR FSC – web-app (iPhone, trình duyệt) và giao diện bên trong app Android 2.x.
  * Giao diện theo "Mẫu HR FSC" (10/11/2026): Chấm công · Bảng công · Nghỉ phép · Tăng ca · Cá nhân.
  * Máy chủ: FSC_WebApi.gs (Apps Script). Trong app Android có cầu nối window.FSCNative (vị trí gốc, phát hiện vị trí giả, Device ID, in). */
 'use strict';
@@ -167,11 +167,11 @@ const laQL = () => store.get('fsc_app_ql') === '1';
 function showInstall() {
   $('nav').hidden = true;
   $('app').innerHTML = `<div class="page plain login wrap">
-    <h1>FSC Chấm Công</h1><p class="muted">Cài lên màn hình chính để dùng như app</p>
+    <h1>HR FSC</h1><p class="muted">Cài lên màn hình chính để dùng như app</p>
     <div class="card"><ol style="padding-left:20px;line-height:1.9;margin:0">
       <li>Bấm nút <b>Chia sẻ</b> ⬆︎ ở thanh dưới của Safari.</li>
       <li>Chọn <b>Thêm vào MH chính</b> (Add to Home Screen), bấm <b>Thêm</b>.</li>
-      <li>Mở <b>FSC Chấm Công</b> từ biểu tượng mới rồi đăng nhập. Khi được hỏi vị trí, chọn <b>Cho phép</b>.</li></ol>
+      <li>Mở <b>HR FSC</b> từ biểu tượng mới rồi đăng nhập. Khi được hỏi vị trí, chọn <b>Cho phép</b>.</li></ol>
       <div class="note" style="margin-top:12px">${I('info', 's')}<span>Phải mở bằng Safari. Đăng nhập trong app đã cài (không đăng nhập ở Safari) để không bị khóa thiết bị.</span></div></div>
     <button class="lnk" id="bSafari">Vẫn dùng trong Safari</button></div>`;
   $('bSafari').onclick = () => { store.set('fsc_app_safari', '1'); showLogin(); };
@@ -183,7 +183,7 @@ function showLogin(msg) {
   stopGps();
   $('nav').hidden = true;
   $('app').innerHTML = `<div class="page plain login wrap">
-    <h1>FSC Chấm Công</h1><p class="muted">Đăng nhập bằng Mã NV và mật khẩu</p>
+    <h1>HR FSC</h1><p class="muted">Chấm công · Bảng công · Nghỉ phép · Tăng ca</p>
     <div class="card" style="margin-top:20px">
       <div class="fl">Mã nhân viên</div>
       <input class="inp" id="iCode" autocapitalize="characters" autocomplete="username" maxlength="20" placeholder="Ví dụ F018" value="${esc(store.get('fsc_app_code'))}">
@@ -324,7 +324,7 @@ async function taiTrangThai(baoLoi) {
   try {
     const r = await api('status');
     if (r.serverTime) { const s = Date.parse(r.serverTime); if (isFinite(s)) timeOffset = s - (t0 + Date.now()) / 2; }
-    st = { ok: true, err: '', diem: r.diem || [], banKinh: Number(r.banKinh) || 200, saiSo: Number(r.saiSoToiDa) || 100, caMo: r.caMo || null, ganDay: r.ganDay || [] };
+    st = { ok: true, apiVersion: r.apiVersion || '', err: '', diem: r.diem || [], banKinh: Number(r.banKinh) || 200, saiSo: Number(r.saiSoToiDa) || 100, caMo: r.caMo || null, ganDay: r.ganDay || [] };
     if (r.profile) saveProfile(r.profile);
   } catch (e) {
     if (authFail(e)) return;
@@ -1084,7 +1084,8 @@ function meHtml() {
     <div class="card" style="padding-top:6px;padding-bottom:6px">
       ${row('user', 'Mã nhân viên', esc(store.get('fsc_app_code')))}${row('box', 'Tổ / nhóm', esc(store.get('fsc_app_team') || '–'))}
       ${row('cal', 'Ngày vào làm', join ? dmy(join) : '–')}${row('wh', 'Điểm chấm công', esc(st.diem.map(d => d.kho || d.ma).join(', ') || '–'))}
-      ${row('phone', 'Thiết bị', `<span class="xs">${esc(deviceId().slice(0, 18))}…</span>`)}${row('info', 'Phiên bản', esc(appVersion()))}</div>
+      ${row('phone', 'Thiết bị', `<span class="xs">${esc(deviceId().slice(0, 18))}…</span>`)}${row('info', 'Phiên bản app', esc(appVersion()))}
+      ${row('shield', 'Phiên bản máy chủ', !st.ok ? '<span class="muted">Đang kiểm tra…</span>' : st.apiVersion ? esc(st.apiVersion) + (laQL() ? ' · Quản lý' : '') : '<span class="red">Bản cũ – cần triển khai bản mới</span>')}</div>
     <div class="card" style="padding-top:6px;padding-bottom:6px">
       <button class="li" id="bPw" style="width:100%;background:none;border:0;border-bottom:1px solid #F0F2F6;text-align:left"><span class="tile" style="width:36px;height:36px;border-radius:10px">${I('key', 's')}</span><span class="sp b">Đổi mật khẩu</span>${I('right', 's')}</button>
       <button class="li" data-fb="KHAC" style="width:100%;background:none;border:0;border-bottom:1px solid #F0F2F6;text-align:left"><span class="tile" style="width:36px;height:36px;border-radius:10px">${I('msg', 's')}</span><span class="sp b">Gửi thắc mắc cho quản lý</span>${I('right', 's')}</button>
