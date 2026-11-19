@@ -702,7 +702,6 @@ function phieuHtml(d) {
       <div class="r sum"><div class="l">Tổng thu nhập</div><div class="a">${money(l.tongThuNhap)}</div></div>
       <div class="hd k"><span>Khoản khấu trừ</span><span>Số tiền</span></div>
       ${tru.map(x => r(x[0], x[1])).join('')}
-      ${ct && ct.hoSoNld ? `<div class="r info"><div class="l"><div>NLĐ đóng BHXH (10,5%)</div><div class="s">Trừ chi phí hồ sơ công ty</div></div><div class="a">${money(ct.hoSoNld)}</div></div>` : ''}
       <div class="r" style="background:var(--lav)"><div class="l b">Tổng giảm trừ</div><div class="a">${tongTru ? '− ' + money(tongTru) : '-'}</div></div></div>
     <div class="net"><div><div class="k">THỰC NHẬN</div><div class="xs muted">Khoản chi trả thực tế</div></div><div class="v">${money(l.thucNhan)}</div></div>
     <div class="sign"><div>Người lập bảng<br><span class="xs">(Ký điện tử đã duyệt)</span><br>${I('shield')}</div><div>Người nhận tiền<br><span class="xs">${esc(store.get('fsc_app_name'))}</span><br>${I('checkc')}</div></div>
@@ -715,13 +714,13 @@ function phieuHtml(d) {
 }
 
 function hoSoHtml(ct) {
-  return `<div class="card"><div class="row"><span class="green">${I('calc')}</span><h3 class="t sp">Lương & Phụ cấp theo hồ sơ</h3><span class="chip blue">Hồ sơ C&B</span></div>
-    <div class="small muted" style="margin:2px 0 10px">Chi phí nhân công cố định mức theo tháng</div>
-    <div class="note mint" style="margin-bottom:8px">${I('info', 's')}<span>Tham khảo định mức hợp đồng lao động, <b>không cộng dồn</b> trực tiếp vào Thực nhận của kỳ này.</span></div>
-    <div class="tbl">${ct.hoSo.map(x => `<div class="r" style="background:none;padding:7px 2px;margin:0;border-bottom:1px solid #F1F3F7"><div class="l">${esc(x[0])}</div><div class="a ${/BHXH|công đoàn/.test(x[0]) ? 'green' : ''}">${money(x[1])}</div></div>`).join('')}
-      ${ct.hoSoNld ? `<div class="r" style="background:none;padding:7px 2px;margin:0"><div class="l">NLĐ đóng BHXH (10,5%)</div><div class="a red">${money(ct.hoSoNld)}</div></div>` : ''}
-      <div class="r" style="margin-top:8px"><div class="l small">Cộng chi phí nhân công:</div><div class="a">${money(ct.hoSoTong)}</div></div>
-      <div class="r sum"><div class="l">Tổng chi phí cho 1 NV / tháng:</div><div class="a" style="font-size:19px">${money(ct.hoSoNet)}</div></div></div></div>`;
+  return `<div class="card"><div class="row"><span class="green">${I('calc')}</span><h3 class="t sp">Mức lương & phụ cấp theo hồ sơ</h3><span class="chip blue">/tháng</span></div>
+    <div class="small muted" style="margin:2px 0 10px">Mức tối đa khi đủ công và đạt 100% KPI</div>
+    <div class="note mint" style="margin-bottom:8px">${I('info', 's')}<span>Tham khảo mức trong hợp đồng; phiếu lương kỳ này tính theo công thực tế và % KPI được đánh giá.</span></div>
+    <div class="tbl">${ct.hoSo.map(x => `<div class="r" style="background:none;padding:7px 2px;margin:0;border-bottom:1px solid #F1F3F7"><div class="l">${esc(x[0])}</div><div class="a">${money(x[1])}</div></div>`).join('')}
+      <div class="r" style="margin-top:8px"><div class="l small">Cộng thu nhập theo hồ sơ:</div><div class="a">${money(ct.hoSoTong)}</div></div>
+      ${ct.hoSoNld ? `<div class="r" style="background:none;padding:7px 2px;margin:0"><div class="l">NLĐ đóng BHXH, BHYT, BHTN (10,5%)</div><div class="a red">− ${money(ct.hoSoNld)}</div></div>` : ''}
+      <div class="r sum"><div class="l">Thực nhận tối đa / tháng:</div><div class="a" style="font-size:19px">${money(ct.hoSoNet)}</div></div></div></div>`;
 }
 
 function bangCongHtml(d) {
