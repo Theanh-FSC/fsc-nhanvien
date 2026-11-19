@@ -3,7 +3,9 @@
  * Máy chủ: FSC_WebApi.gs (Apps Script). Trong app Android có cầu nối window.FSCNative (vị trí gốc, phát hiện vị trí giả, Device ID, in). */
 'use strict';
 let API_URL = 'https://script.google.com/macros/s/AKfycbxgsgJUvlavwvEQot0pnZDU5pAaT1A3o5zeLjoP7hiPdLCadAQ99X2HmldTpwvEWAgG/exec';
-const VERSION = '2.0';
+// Máy chủ web fscco.vn (20/11/2026): config.json "webUrl" + "webCodes" (danh sách Mã NV dùng thử, hoặc "*" = tất cả).
+let WEB_URL = '', WEB_CODES = [];
+const VERSION = '2.1';
 const NATIVE = window.FSCNative || null;
 const VI_TRI_CU_MS = 60000;
 
@@ -114,13 +116,21 @@ function deviceId() {
 }
 function appVersion() { try { return NATIVE && NATIVE.version ? 'android-' + NATIVE.version() + '/web-' + VERSION : 'web-' + VERSION; } catch (e) { return 'web-' + VERSION; } }
 
+// Mã NV này dùng máy chủ web hay Apps Script
+function dungWeb(code) {
+  const c = String(code || store.get('fsc_app_code') || '').trim().toUpperCase();
+  return !!WEB_URL && (WEB_CODES.indexOf('*') >= 0 || (!!c && WEB_CODES.indexOf(c) >= 0));
+}
+function urlCho(body) { return dungWeb(body && body.code) ? WEB_URL : API_URL; }
+
 async function api(action, body) {
   const payload = JSON.stringify(Object.assign({ action, deviceId: deviceId(), app: appVersion() }, store.get('fsc_app_token') ? { token: store.get('fsc_app_token') } : {}, body || {}));
+  const url = urlCho(body);
   const waits = [2000, 4000, 6000];
   for (let i = 0; ; i++) {
     let res;
     try {
-      const r = await fetch(API_URL, { method: 'POST', body: payload });
+      const r = await fetch(url, { method: 'POST', body: payload });
       res = await r.json();
     } catch (e) {
       const err = new Error('Không kết nối được máy chủ. Kiểm tra mạng (4G/Wi-Fi) rồi thử lại.'); err.code = 'net'; throw err;
@@ -130,6 +140,35 @@ async function api(action, body) {
     const err = new Error(res.error || 'Máy chủ gặp lỗi, vui lòng thử lại.'); err.code = res.code || ''; throw err;
   }
 }
+
+/* ---------------- Chấm công khi mất mạng (chỉ máy chủ web) ---------------- */
+// Lượt chấm công gửi không được vì mất mạng: lưu trên máy (kèm giờ bấm), tự gửi lại khi có mạng. Máy chủ nhận lượt cũ tối đa 12 giờ.
+const HANG_KEY = 'fsc_app_queue';
+function hangCho() { try { return JSON.parse(store.get(HANG_KEY) || '[]') || []; } catch (e) { return []; } }
+function luuHang(q) { store.set(HANG_KEY, q.length ? JSON.stringify(q.slice(-20)) : ''); }
+let dangGuiHang = false;
+async function guiHangCho() {
+  if (dangGuiHang || !store.get('fsc_app_token')) return;
+  let q = hangCho();
+  if (!q.length) return;
+  dangGuiHang = true;
+  let n = 0;
+  try {
+    while (q.length) {
+      const x = q[0];
+      if (Date.now() - Date.parse(x.at) > 12 * 3600000) { q.shift(); luuHang(q); continue; }
+      try { await api('scan', x); n++; }
+      catch (e) {
+        if (e.code === 'net') break;          // vẫn mất mạng: để lần sau
+        if (e.code === 'auth') break;
+        toast('Lượt chấm công lúc ' + String(x.at).slice(11, 16) + ' không ghi được: ' + e.message);
+      }
+      q.shift(); luuHang(q);
+    }
+  } finally { dangGuiHang = false; }
+  if (n) { toast('Đã gửi ' + n + ' lượt chấm công lưu lúc mất mạng.'); taiTrangThai(false); taiMe(null); }
+}
+window.addEventListener('online', () => guiHangCho());
 
 /* ---------------- Hộp thoại, thông báo ---------------- */
 function dialog(title, message, okText, cancelText) {
@@ -572,6 +611,14 @@ async function xacNhan(mode) {
   } catch (e) {
     busy = false;
     if (authFail(e)) return;
+    if (e.code === 'net' && dungWeb()) {
+      const q = hangCho();
+      q.push({ mode, lat: v.l.lat, lng: v.l.lng, acc: Math.round(v.l.acc), mock: !!v.l.mock, at: new Date().toISOString() });
+      luuHang(q);
+      render();
+      dialog('Đã lưu trên máy', `Mất mạng: ${loai} lúc ${gio} đã lưu trên điện thoại và sẽ tự gửi khi có mạng (trong 12 giờ). Không cần bấm lại.`);
+      return;
+    }
     render(); dialog('Chưa chấm công được', e.message); taiTrangThai(false);
   }
 }
@@ -1148,7 +1195,7 @@ function showThongBao() {
 
 /* ---------------- Khởi động ---------------- */
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && store.get('fsc_app_token') && !$('nav').hidden) { startGps(true); taiTrangThai(false); taiMe(null); }
+  if (document.visibilityState === 'visible' && store.get('fsc_app_token') && !$('nav').hidden) { startGps(true); taiTrangThai(false); taiMe(null); guiHangCho(); }
 });
 window.fscOnResume = () => { if (store.get('fsc_app_token') && !$('nav').hidden) { startGps(true); taiTrangThai(false); taiMe(null); if (laQL()) { taiMgrOt(); if (tab === 'ql' && mgr.seg === 'pres') taiMgrPres(); } } };
 // Link máy chủ đọc từ config.json (sửa 1 chỗ khi Apps Script đổi link triển khai); lỗi thì dùng link sẵn trong code.
@@ -1157,6 +1204,12 @@ async function napCauHinh() {
     const r = await fetch('config.json?t=' + Date.now(), { cache: 'no-store' });
     const c = await r.json();
     if (c && /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(c.apiUrl || '')) API_URL = c.apiUrl;
+    if (c && /^https:\/\/(www\.)?fscco\.vn\/api\/app$/.test(c.webUrl || '')) {
+      WEB_URL = c.webUrl;
+      WEB_CODES = (Array.isArray(c.webCodes) ? c.webCodes : String(c.webCodes || '').split(/[\s,;]+/)).map(x => String(x).trim().toUpperCase()).filter(Boolean);
+    }
+    const q = new URLSearchParams(location.search);   // thử trên máy dev: ?web=http://localhost:3400/api/app
+    if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/api\/app$/.test(q.get('web') || '')) { WEB_URL = q.get('web'); WEB_CODES = ['*']; }
   } catch (e) {}
 }
 (async function start() {
@@ -1165,7 +1218,7 @@ async function napCauHinh() {
   if (!store.get('fsc_app_token') && NATIVE && NATIVE.oldSession) {
     try { const o = JSON.parse(NATIVE.oldSession() || 'null'); if (o && o.token) { store.set('fsc_app_token', o.token); saveProfile({ code: o.code, name: o.name, team: o.team }); } } catch (e) {}
   }
-  if (store.get('fsc_app_token')) showMain();
+  if (store.get('fsc_app_token')) { showMain(); setTimeout(guiHangCho, 1500); }
   else if (isIOS && !isStandalone && !store.get('fsc_app_safari')) showInstall();
   else showLogin();
 })();
