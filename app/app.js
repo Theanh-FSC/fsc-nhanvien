@@ -685,7 +685,7 @@ function tachNhan(lbl, amount) {
 
 function phieuHtml(d) {
   const l = d.l;
-  if (!l) return `<div class="card"><div class="muted">Chưa có bảng lương kỳ này. Bảng lương được cập nhật từ Dashboard khi quản lý mở trang.</div></div>`;
+  if (!l) return `<div class="card"><div class="muted">Chưa có bảng lương kỳ này. Bảng lương được tính trên web fscco.vn theo ngày công và hồ sơ lương.</div></div>`;
   const ct = me.chiTiet && Array.isArray(me.chiTiet.thu) ? me.chiTiet : null;
   const r = (lbl, a, cls) => { const x = tachNhan(lbl, a); return `<div class="r ${cls || ''}"><div class="l"><div>${esc(x.t)}</div>${x.s ? `<div class="s">${esc(x.s)}</div>` : ''}</div><div class="a">${moneyOr(a)}</div></div>`; };
   const thu = ct ? ct.thu : [['Lương ngày công (' + num(l.ngayCong) + ' công)', l.luongNgay], ['Lương sản lượng', l.tienKfm], ['Tiền công CPG (Inbound/Outbound)', l.tienCpg], ['Phụ cấp / thưởng cố định', l.phuCap], ['Tăng ca (' + num(l.gioTangCa) + ' giờ)', l.tienTangCa]];
@@ -695,6 +695,8 @@ function phieuHtml(d) {
   return `<div class="card" id="phieu"><div class="row top"><span class="green" style="margin-top:2px">${I('doc')}</span>
       <div class="sp"><h2 class="t">Phiếu Lương ${esc(kyNhan(me.ky))}</h2><div class="small muted">${esc(store.get('fsc_app_name'))} • Mã NV: ${esc(store.get('fsc_app_code'))}${store.get('fsc_app_team') ? ' • ' + esc(store.get('fsc_app_team')) : ''}</div></div>
       <span class="chip">${esc(l.hinhThuc || '')}</span></div>
+    ${ct && Array.isArray(ct.mucLuong) && ct.mucLuong.length ? `<div class="tbl" style="margin-bottom:10px"><div class="hd"><span>Thông tin hưởng lương</span><span></span></div>
+      ${ct.mucLuong.map(x => `<div class="r" style="background:none;padding:6px 2px;margin:0;border-bottom:1px solid #F1F3F7"><div class="l">${esc(x[0])}</div><div class="a" style="font-weight:600">${esc(x[1])}</div></div>`).join('')}</div>` : ''}
     <div class="tbl"><div class="hd"><span>Khoản thu</span><span>Số tiền</span></div>
       ${thu.map(x => r(x[0], x[1])).join('')}
       <div class="r sum"><div class="l">Tổng thu nhập</div><div class="a">${money(l.tongThuNhap)}</div></div>
