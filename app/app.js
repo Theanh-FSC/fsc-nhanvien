@@ -1195,9 +1195,10 @@ function showThongBao() {
 
 /* ---------------- Khởi động ---------------- */
 document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') napCauHinh();   // đổi máy chủ (config.json) có hiệu lực khi mở lại app
   if (document.visibilityState === 'visible' && store.get('fsc_app_token') && !$('nav').hidden) { startGps(true); taiTrangThai(false); taiMe(null); guiHangCho(); }
 });
-window.fscOnResume = () => { if (store.get('fsc_app_token') && !$('nav').hidden) { startGps(true); taiTrangThai(false); taiMe(null); if (laQL()) { taiMgrOt(); if (tab === 'ql' && mgr.seg === 'pres') taiMgrPres(); } } };
+window.fscOnResume = () => { napCauHinh(); if (store.get('fsc_app_token') && !$('nav').hidden) { startGps(true); taiTrangThai(false); taiMe(null); if (laQL()) { taiMgrOt(); if (tab === 'ql' && mgr.seg === 'pres') taiMgrPres(); } } };
 // Link máy chủ đọc từ config.json (sửa 1 chỗ khi Apps Script đổi link triển khai); lỗi thì dùng link sẵn trong code.
 async function napCauHinh() {
   try {
